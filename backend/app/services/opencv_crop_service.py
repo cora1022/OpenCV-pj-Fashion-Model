@@ -1,3 +1,18 @@
+"""OpenCV 중심 이미지 전처리 서비스.
+
+이 프로젝트에서 이미지 검색은 원본 이미지를 바로 FashionCLIP에 넣지 않고,
+OpenCV/YOLO로 의류 관심 영역을 먼저 분리한 뒤 임베딩한다. 이 파일은
+그 전처리 단계를 담당한다.
+
+주요 흐름:
+1. 업로드 bytes를 PIL RGB 이미지로 decode
+2. numpy array로 변환
+3. OpenCV 처리를 위해 RGB -> BGR 변환
+4. YOLO clothing detector 또는 OpenCV fallback detector로 bounding box 탐지
+5. padding과 좌표 보정 후 의류 영역 crop
+6. crop_applied, detector, crop_box metadata 반환
+"""
+
 from io import BytesIO
 from pathlib import Path
 
@@ -17,6 +32,8 @@ def _decode_image(image_bytes: bytes) -> Image.Image:
 
 
 class OpenCvCropService:
+    """FashionCLIP 임베딩 전에 의류 영역을 추출하는 핵심 전처리 계층."""
+
     def __init__(
         self,
         enabled: bool = True,
@@ -76,10 +93,12 @@ class OpenCvCropService:
         array = np.array(image)
         bgr = cv2.cvtColor(array, cv2.COLOR_RGB2BGR)
 
+        # OpenCV/YOLO detector로 검색에 필요한 의류 관심 영역을 먼저 찾는다.
         box = self._detect_box(image, bgr)
         if box is None:
             return image, metadata
 
+        # 탐지 box를 약간 확장해 소매/밑단이 잘리지 않도록 보정한다.
         x, y, width, height = self._expand_box(box, image.width, image.height)
         cropped = image.crop((x, y, x + width, y + height))
 

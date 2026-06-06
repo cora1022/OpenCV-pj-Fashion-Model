@@ -1,8 +1,88 @@
-# Fashion Image Similarity Search
+# OpenCV 기반 패션 이미지 유사도 검색
 
-FashionCLIP, OpenCV/YOLO, Qdrant, FastAPI, React를 사용한 패션 이미지 유사도 검색 프로젝트입니다.
+OpenCV/YOLO 전처리, FashionCLIP 이미지 임베딩, Qdrant 벡터 검색, FastAPI, React를 연결한 패션 이미지 유사도 검색 프로젝트입니다.
 
-사용자가 이미지를 업로드하면 백엔드가 이미지를 FashionCLIP 벡터로 변환하고, Qdrant의 `naver_fashion_images_fashionclip` 컬렉션에서 유사한 네이버 쇼핑 상품을 검색합니다. 로그인한 admin은 마음에 드는 상품을 MySQL 저장 목록에 보관할 수 있습니다.
+이 프로젝트의 핵심은 단순히 이미지를 업로드해서 AI 모델에 넣는 것이 아니라, **OpenCV 기반 이미지 전처리로 의류 관심 영역을 먼저 분리한 뒤 검색하는 것**입니다. 사용자가 올린 원본 이미지에는 배경, 얼굴, 손, 주변 사물처럼 패션 검색에 방해되는 정보가 섞일 수 있기 때문에, 백엔드는 먼저 OpenCV 처리에 적합한 배열로 변환하고 YOLO/OpenCV detector를 통해 옷 영역을 찾습니다. 이후 바운딩 박스를 확장하고 이미지 범위를 보정한 뒤 crop된 의류 이미지만 FashionCLIP 벡터로 변환합니다.
+
+즉, 검색 정확도를 만드는 첫 단계는 `FashionCLIP`이 아니라 `OpenCvCropService`의 디지털 영상처리 파이프라인입니다. FashionCLIP과 Qdrant는 OpenCV가 정리한 의류 영역을 기반으로 유사도 검색을 수행합니다. 로그인한 admin은 마음에 드는 상품을 MySQL 저장 목록에 보관할 수 있습니다.
+
+## OpenCV 핵심 구현
+
+OpenCV 관련 핵심 코드는 [backend/app/services/opencv_crop_service.py](backend/app/services/opencv_crop_service.py)에 있습니다.
+
+```text
+입력 이미지 bytes
+  -> PIL Image decode
+  -> RGB 이미지 생성
+  -> numpy array 변환
+  -> OpenCV 처리를 위한 RGB to BGR 변환
+  -> YOLO clothing detector 또는 OpenCV cascade/HOG detector 실행
+  -> 의류 후보 bounding box 선택
+  -> box padding 확장
+  -> 이미지 경계 밖 좌표 보정
+  -> 의류 영역 crop
+  -> crop metadata와 함께 검색 파이프라인으로 전달
+```
+
+OpenCV가 담당하는 역할:
+
+- 원본 이미지를 영상처리 가능한 `numpy` 배열로 변환
+- `cv2.cvtColor(..., cv2.COLOR_RGB2BGR)`로 OpenCV 처리 색상 공간에 맞춤
+- YOLO 모델이 없을 때 OpenCV cascade 또는 HOG detector로 fallback
+- 사람 전체가 탐지된 경우 상반신 영역 중심으로 crop 범위 조정
+- 배경보다 옷 영역이 임베딩에 더 크게 반영되도록 관심 영역 추출
+- `crop_applied`, `detector`, `crop_box` metadata를 남겨 전처리 결과 확인 가능
+
+이 구조 때문에 본 프로젝트는 단순 쇼핑몰이나 텍스트 검색 프로젝트가 아니라, 입력 영상에서 의미 있는 영역을 찾아내고 그 결과를 머신러닝 검색으로 연결하는 OpenCV 중심 프로젝트입니다.
+
+## 이미지 검색 파이프라인
+
+```text
+1. React에서 사용자가 이미지 업로드
+2. FastAPI가 이미지 bytes 수신
+3. OpenCvCropService가 OpenCV/YOLO 전처리 수행
+4. 의류 영역 crop 및 crop metadata 생성
+5. FashionClipService가 crop 이미지를 벡터화
+6. QdrantSearchService가 벡터 유사도 검색
+7. GeminiFeatureService가 색상/소재/스타일 특징 분석
+8. React가 유사 상품 카드 출력
+9. 로그인한 관리자는 결과를 MySQL에 저장
+```
+
+OpenCV 전처리가 빠지면 FashionCLIP은 전체 이미지의 배경과 잡음까지 함께 임베딩할 수 있습니다. 그래서 이 프로젝트에서는 검색 전에 옷 영역을 먼저 분리하는 것을 핵심 설계로 두었습니다.
+
+## 주요 기술
+
+```text
+OpenCV
+  이미지 색상 공간 변환, detector fallback, HOG 기반 후보 탐지, crop 전처리
+
+YOLO
+  의류 영역 bounding box 탐지
+
+FashionCLIP
+  crop된 의류 이미지를 feature vector로 변환
+
+Qdrant
+  FashionCLIP 벡터 기반 유사도 검색
+
+FastAPI
+  이미지 업로드, 검색, 로그인, 저장 목록 API
+
+React + TypeScript
+  이미지 업로드, 수동 크롭, 검색 결과 UI
+
+MySQL
+  관리자 계정과 저장 상품 목록 관리
+
+Docker Compose + Caddy
+  EC2 배포와 HTTPS 프록시 구성
+```
+
+## 주요 문서
+
+- [OpenCV 중심 처리 흐름](docs/OPENCV_CORE_PIPELINE.md)
+- [클린 아키텍처 기반 개발 지시서](docs/SECTION4_BEGINNER_CLEAN_ARCHITECTURE_PROMPT.md)
 
 ## 배포 목표
 
@@ -337,6 +417,6 @@ Docker Compose 배포에서는 `VITE_API_BASE_URL`을 비워서 같은 도메인
 
 ## 추가 기술 문서
 
-프로젝트의 전체 개발·배포 흐름은 [docs/PROJECT_FLOW.md](docs/PROJECT_FLOW.md)에서 확인할 수 있습니다.
+OpenCV 전처리가 왜 검색 품질의 핵심인지 정리한 문서는 [docs/OPENCV_CORE_PIPELINE.md](docs/OPENCV_CORE_PIPELINE.md)에서 확인할 수 있습니다.
 
-공부와 면접 대비용 학습 자료는 [docs/STUDY_GUIDE.md](docs/STUDY_GUIDE.md)에서 확인할 수 있습니다.
+클린 아키텍처를 요구하며 프론트엔드와 백엔드를 결합해 개발한 지시서는 [docs/SECTION4_BEGINNER_CLEAN_ARCHITECTURE_PROMPT.md](docs/SECTION4_BEGINNER_CLEAN_ARCHITECTURE_PROMPT.md)에서 확인할 수 있습니다.
