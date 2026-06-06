@@ -1,3 +1,17 @@
+"""네이버 상품 이미지를 OpenCV로 선별/crop한 뒤 Qdrant 컬렉션을 만드는 도구.
+
+이 스크립트는 완성된 웹 서비스 이전 단계에서 실행하는 데이터 구축 파이프라인이다.
+네이버 쇼핑 API로 패션 이미지를 가져오고, 원본 전체를 그대로 벡터화하지 않도록
+OpenCV 기반 관심 영역 후보를 잡거나 사용자가 의류 영역을 직접 crop한 뒤
+FashionCLIP 벡터와 상품 payload를 Qdrant에 저장한다.
+
+중요한 점:
+- Qdrant 컬렉션 품질은 저장되는 이미지 벡터의 품질에 크게 좌우된다.
+- 그래서 상품 이미지 저장 전 OpenCV/HOG로 사람 또는 상반신 후보를 제안한다.
+- 사용자는 추천 박스를 보고 의류 영역을 보정하거나 직접 crop한다.
+- 최종적으로 Qdrant에는 원본 배경보다 의류 영역 중심의 이미지 벡터가 쌓인다.
+"""
+
 #python naver_crop_to_qdrant_fashionclip.py "스트릿 맨투맨" --display 20
 #python naver_crop_to_qdrant_fashionclip.py "반팔티" --display 20
 
@@ -9,6 +23,8 @@ import argparse
 from io import BytesIO
 from datetime import datetime
 
+import cv2
+import numpy as np
 import requests
 from dotenv import load_dotenv
 from PIL import Image, ImageTk
@@ -51,6 +67,12 @@ CANVAS_HEIGHT = 400
 
 # 네이버 쇼핑 API는 start가 보통 1~1000 범위입니다.
 NAVER_MAX_START = 1000
+
+# Qdrant 구축 전에 상품 이미지에서 의류 중심 영역을 제안하기 위한 OpenCV detector입니다.
+# YOLO 모델이 없는 독립 실행 스크립트에서도 OpenCV 전처리 흐름이 유지되도록 HOG를 사용합니다.
+OPENCV_HOG_PADDING_X_RATIO = 0.12
+OPENCV_HOG_PADDING_Y_RATIO = 0.10
+OPENCV_UPPER_BODY_RATIO = 0.72
 
 
 # =========================
@@ -132,6 +154,67 @@ def download_image(image_url: str) -> Image.Image:
 
     img = Image.open(BytesIO(response.content)).convert("RGB")
     return img
+
+
+# =========================
+# OpenCV crop 후보 생성
+# =========================
+
+def get_opencv_suggested_crop_box(image: Image.Image) -> tuple[int, int, int, int] | None:
+    """
+    Qdrant에 저장할 상품 이미지를 만들기 전에 OpenCV로 의류 중심 crop 후보를 제안합니다.
+
+    네이버 쇼핑 이미지는 배경, 모델 얼굴, 손, 여백, 쇼핑몰 워터마크가 함께 들어올 수 있습니다.
+    원본 전체를 그대로 FashionCLIP 벡터로 만들면 의류보다 배경 특징이 섞일 수 있으므로,
+    OpenCV HOG person detector로 사람 영역을 찾고 상반신/의류 영역에 가까운 박스를 추천합니다.
+
+    반환값은 PIL 이미지 좌표계 기준 (x1, y1, x2, y2)입니다.
+    """
+    rgb = image.convert("RGB")
+    array = np.array(rgb)
+
+    # OpenCV는 BGR 채널 순서를 기본으로 사용하므로 RGB 이미지를 BGR로 변환합니다.
+    bgr = cv2.cvtColor(array, cv2.COLOR_RGB2BGR)
+
+    hog = cv2.HOGDescriptor()
+    hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
+
+    boxes, weights = hog.detectMultiScale(
+        bgr,
+        winStride=(8, 8),
+        padding=(16, 16),
+        scale=1.05,
+    )
+
+    if boxes is None or len(boxes) == 0:
+        return None
+
+    weighted_boxes = []
+    for index, (x, y, width, height) in enumerate(boxes):
+        confidence = float(weights[index]) if weights is not None and len(weights) > index else 1.0
+        area = int(width) * int(height)
+        weighted_boxes.append((int(x), int(y), int(width), int(height), area, confidence))
+
+    x, y, width, height, _area, _confidence = max(
+        weighted_boxes,
+        key=lambda item: item[4] * item[5],
+    )
+
+    # 패션 상품 검색에서는 전신보다 상의/의류 영역이 더 중요하므로 상반신 중심으로 줄입니다.
+    upper_height = max(1, int(height * OPENCV_UPPER_BODY_RATIO))
+
+    pad_x = int(width * OPENCV_HOG_PADDING_X_RATIO)
+    pad_y = int(upper_height * OPENCV_HOG_PADDING_Y_RATIO)
+
+    left = max(0, x - pad_x)
+    top = max(0, y - pad_y)
+    right = min(image.width, x + width + pad_x)
+    bottom = min(image.height, y + upper_height + pad_y)
+
+    if right - left < 10 or bottom - top < 10:
+        return None
+
+    return left, top, right, bottom
 
 
 # =========================
@@ -346,6 +429,7 @@ def upsert_image_to_qdrant(
     item: dict,
     query: str,
     crop_used: bool,
+    crop_method: str,
 ):
     vector = image_to_vector(model, processor, device, image)
     saved_path = save_image_file(image)
@@ -368,6 +452,7 @@ def upsert_image_to_qdrant(
         "category4": item.get("category4"),
         "query": query,
         "crop_used": crop_used,
+        "crop_method": crop_method,
         "saved_image_path": saved_path,
         "duplicate_key": make_primary_item_key(item),
         "embedding_model": FASHIONCLIP_MODEL_NAME,
@@ -467,6 +552,15 @@ class CropReviewApp:
         )
         self.save_crop_button.grid(row=0, column=0, padx=4, pady=3)
 
+        self.opencv_suggest_button = tk.Button(
+            button_frame,
+            text="OpenCV 자동영역(A)",
+            command=self.apply_opencv_suggested_crop,
+            width=18,
+            height=2,
+        )
+        self.opencv_suggest_button.grid(row=0, column=1, padx=4, pady=3)
+
         self.save_original_button = tk.Button(
             button_frame,
             text="원본 저장(O)",
@@ -474,7 +568,7 @@ class CropReviewApp:
             width=18,
             height=2,
         )
-        self.save_original_button.grid(row=0, column=1, padx=4, pady=3)
+        self.save_original_button.grid(row=0, column=2, padx=4, pady=3)
 
         self.skip_button = tk.Button(
             button_frame,
@@ -483,7 +577,7 @@ class CropReviewApp:
             width=18,
             height=2,
         )
-        self.skip_button.grid(row=0, column=2, padx=4, pady=3)
+        self.skip_button.grid(row=0, column=3, padx=4, pady=3)
 
         self.reset_button = tk.Button(
             button_frame,
@@ -513,6 +607,8 @@ class CropReviewApp:
 
         self.root.bind("<s>", lambda event: self.save_cropped_to_qdrant())
         self.root.bind("<S>", lambda event: self.save_cropped_to_qdrant())
+        self.root.bind("<a>", lambda event: self.apply_opencv_suggested_crop())
+        self.root.bind("<A>", lambda event: self.apply_opencv_suggested_crop())
         self.root.bind("<o>", lambda event: self.save_original_to_qdrant())
         self.root.bind("<O>", lambda event: self.save_original_to_qdrant())
         self.root.bind("<n>", lambda event: self.next_item())
@@ -614,12 +710,12 @@ class CropReviewApp:
             f"상품명: {title}\n"
             f"쇼핑몰: {mall} / 최저가: {price} / product_id: {product_id}\n"
             f"링크: {link}\n"
-            f"단축키: S 크롭저장 / O 원본저장 / N 건너뛰기 / R 초기화 / ESC 종료"
+            f"단축키: A OpenCV 자동영역 / S 크롭저장 / O 원본저장 / N 건너뛰기 / R 초기화 / ESC 종료"
         )
 
         self.info_label.config(text=info_text)
         self.status_label.config(
-            text="마우스로 이미지 영역을 드래그해서 크롭할 수 있습니다. 저장 시 FashionCLIP 벡터로 Qdrant에 들어갑니다."
+            text="A를 누르면 OpenCV가 의류 후보 영역을 제안합니다. 필요하면 마우스로 보정한 뒤 Qdrant에 저장하세요."
         )
 
     def render_image(self):
@@ -700,6 +796,44 @@ class CropReviewApp:
         self.start_x = None
         self.start_y = None
 
+    def apply_opencv_suggested_crop(self):
+        if self.current_image is None:
+            return
+
+        box = get_opencv_suggested_crop_box(self.current_image)
+        if box is None:
+            self.status_label.config(
+                text="OpenCV HOG가 의류/사람 후보 영역을 찾지 못했습니다. 마우스로 직접 의류 영역을 선택하세요."
+            )
+            return
+
+        img_x1, img_y1, img_x2, img_y2 = box
+        canvas_x1 = int(img_x1 * self.scale + self.offset_x)
+        canvas_y1 = int(img_y1 * self.scale + self.offset_y)
+        canvas_x2 = int(img_x2 * self.scale + self.offset_x)
+        canvas_y2 = int(img_y2 * self.scale + self.offset_y)
+
+        if self.rect_id is not None:
+            self.canvas.delete(self.rect_id)
+
+        self.start_x = canvas_x1
+        self.start_y = canvas_y1
+        self.rect_id = self.canvas.create_rectangle(
+            canvas_x1,
+            canvas_y1,
+            canvas_x2,
+            canvas_y2,
+            outline="red",
+            width=2,
+        )
+        self.status_label.config(
+            text=(
+                "OpenCV 자동 후보 영역 적용: "
+                f"x={img_x1}, y={img_y1}, width={img_x2 - img_x1}, height={img_y2 - img_y1}. "
+                "의류 영역에 맞게 필요하면 마우스로 다시 조정하세요."
+            )
+        )
+
     def get_cropped_image(self):
         if self.rect_id is None:
             return None
@@ -753,6 +887,7 @@ class CropReviewApp:
                 item=self.current_item,
                 query=self.query,
                 crop_used=True,
+                crop_method="manual_or_opencv_suggested_crop",
             )
 
             self.mark_current_item_as_saved()
@@ -777,6 +912,7 @@ class CropReviewApp:
                 item=self.current_item,
                 query=self.query,
                 crop_used=False,
+                crop_method="original_without_crop",
             )
 
             self.mark_current_item_as_saved()
