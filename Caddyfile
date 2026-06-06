@@ -1,0 +1,4 @@
+coran1022.com, www.coran1022.com {
+    encode gzip zstd
+    reverse_proxy frontend:80
+}

@@ -1,0 +1,12 @@
+.git
+.env
+*.env
+**/__pycache__
+**/*.pyc
+backend/venv
+backend/uploads
+frontend/node_modules
+frontend/dist
+saved_cropped_images_fashionclip
+qdrant_storage
+mysql_data
