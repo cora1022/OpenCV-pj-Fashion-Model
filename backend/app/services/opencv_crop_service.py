@@ -159,27 +159,31 @@ class OpenCvCropService:
 
         names = getattr(result, "names", {}) or getattr(self.yolo_model, "names", {})
         clothing_candidates = []
-        fallback_candidates = []
+        clothing_terms = {
+            "clothing", "cloth", "shirt", "top", "t-shirt", "tee", "blouse",
+            "sweater", "hoodie", "jacket", "coat", "dress", "skirt", "pants",
+            "trousers", "shorts", "jeans", "cardigan", "vest",
+        }
 
         for detected_box in boxes:
             xyxy = detected_box.xyxy[0].detach().cpu().numpy()
             class_id = int(detected_box.cls[0].item()) if detected_box.cls is not None else -1
             class_name = str(names.get(class_id, class_id)).lower()
-            confidence = float(detected_box.conf[0].item()) if detected_box.conf is not None else 0.0
+            confidence = (
+                float(detected_box.conf[0].item()) if detected_box.conf is not None else 0.0
+            )
             x1, y1, x2, y2 = [int(round(value)) for value in xyxy]
             width = max(1, x2 - x1)
             height = max(1, y2 - y1)
             area = width * height
             item = (x1, y1, width, height, area, confidence)
 
-            fallback_candidates.append(item)
-            if "cloth" in class_name or "clothing" in class_name:
+            if any(term in class_name for term in clothing_terms):
                 clothing_candidates.append(item)
 
-        selected = max(
-            clothing_candidates or fallback_candidates,
-            key=lambda item: item[4] * item[5],
-        )
+        if not clothing_candidates:
+            return None
+        selected = max(clothing_candidates, key=lambda item: item[4] * item[5])
         return selected[0], selected[1], selected[2], selected[3]
 
     def _detector_name(self) -> str:
@@ -188,7 +192,7 @@ class OpenCvCropService:
         if self.cascade is not None:
             return "opencv_cascade"
         if self.hog is not None:
-            return "opencv_hog"
+            return "opencv_hog_person_upper_body"
         return "disabled"
 
     def _largest_box(self, boxes) -> tuple[int, int, int, int] | None:
