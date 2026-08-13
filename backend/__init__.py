@@ -1,1 +1,1 @@
-
+"""Style Finder backend package."""

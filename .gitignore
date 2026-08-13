@@ -1,23 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
 backend/venv/
 backend/uploads/
+
+# Frontend
 frontend/node_modules/
 frontend/dist/
+frontend/.env
 
+# Local configuration
 .env
 *.env
 backend/.env
-frontend/.env
 
-.env
-*.env
-backend/.env
-frontend/.env
-
-.env
-*.env
-backend/.env
-frontend/.env
-
-qdrant_storage.tar.gz
-*.tar.gz
+# Local data and model artifacts
+saved_cropped_images_fashionclip/
+catalog_images/
 qdrant_storage/
+backend/models/*.pt
+*.tar.gz
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

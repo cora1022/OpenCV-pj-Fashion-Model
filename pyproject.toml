@@ -1,0 +1,39 @@
+[project]
+name = "style-finder"
+version = "0.1.0"
+description = "Fashion image preprocessing and similarity search API"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "anyio>=4.9,<5",
+  "fastapi>=0.115,<1",
+  "opencv-python-headless>=4.11,<5",
+  "pillow>=11.2,<12",
+  "pydantic>=2.11,<3",
+  "python-dotenv>=1.1,<2",
+  "python-multipart>=0.0.20,<1",
+  "qdrant-client>=1.14,<2",
+  "torch>=2.7,<3",
+  "transformers>=4.52,<5",
+  "ultralytics>=8.3,<9",
+  "uvicorn[standard]>=0.34,<1",
+]
+
+[dependency-groups]
+dev = [
+  "httpx>=0.28,<1",
+  "pytest>=8.3,<9",
+  "pytest-asyncio>=0.26,<1",
+  "ruff>=0.11,<1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+asyncio_mode = "auto"
+pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
