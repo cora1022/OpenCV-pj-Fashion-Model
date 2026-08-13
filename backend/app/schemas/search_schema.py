@@ -1,39 +1,31 @@
-from typing import Any
+import re
 
-from pydantic import BaseModel
-
-
-class ImageSearchResult(BaseModel):
-    score: float
-    title: Any = None
-    link: Any = None
-    image_url: Any = None
-    mall_name: Any = None
-    lprice: Any = None
-    hprice: Any = None
-    product_id: Any = None
-    query: Any = None
-    crop_used: Any = None
-    saved_image_path: Any = None
-    embedding_model: Any = None
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class ImageFeatureAnalysis(BaseModel):
-    available: bool = False
-    summary: str | None = None
-    item_type: str | None = None
-    colors: list[str] = []
-    materials: list[str] = []
-    patterns: list[str] = []
-    style_keywords: list[str] = []
-    search_keywords: list[str] = []
-    error: str | None = None
+def to_camel(value: str) -> str:
+    return re.sub(r"_([a-z])", lambda match: match.group(1).upper(), value)
 
 
-class ImageSearchResponse(BaseModel):
-    results: list[ImageSearchResult]
-    image_features: ImageFeatureAnalysis | None = None
+class ApiModel(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
-class ImageUrlSearchRequest(BaseModel):
+class CatalogMetadata(ApiModel):
+    category: str
+    colors: list[str] = Field(default_factory=list)
+    style_tags: list[str] = Field(default_factory=list)
+
+
+class ImageSearchResult(ApiModel):
+    catalog_item_id: str
+    title: str
     image_url: str
+    source_url: str | None = None
+    similarity_score: float
+    metadata: CatalogMetadata
+    model_version: str
+
+
+class ImageSearchResponse(ApiModel):
+    results: list[ImageSearchResult]
