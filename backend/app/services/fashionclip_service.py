@@ -10,8 +10,9 @@ class InvalidImageError(ValueError):
 
 
 class FashionClipService:
-    def __init__(self, model_name: str):
+    def __init__(self, model_name: str, model_revision: str = "main"):
         self.model_name = model_name
+        self.model_revision = model_revision
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.processor: CLIPProcessor | None = None
         self.model: CLIPModel | None = None
@@ -20,10 +21,20 @@ class FashionClipService:
         if self.model is not None and self.processor is not None:
             return
 
-        self.processor = CLIPProcessor.from_pretrained(self.model_name)
-        self.model = CLIPModel.from_pretrained(self.model_name)
+        self.processor = CLIPProcessor.from_pretrained(
+            self.model_name, revision=self.model_revision
+        )
+        self.model = CLIPModel.from_pretrained(self.model_name, revision=self.model_revision)
         self.model.to(self.device)
         self.model.eval()
+
+    @property
+    def model_version(self) -> str:
+        return f"{self.model_name}@{self.model_revision}"
+
+    @property
+    def loaded(self) -> bool:
+        return self.model is not None and self.processor is not None
 
     def embed_image_bytes(self, image_bytes: bytes) -> list[float]:
         if self.model is None or self.processor is None:

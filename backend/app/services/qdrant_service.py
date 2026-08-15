@@ -1,84 +1,89 @@
-from qdrant_client import QdrantClient
+from uuid import NAMESPACE_URL, uuid5
 
-from backend.app.schemas.search_schema import ImageSearchResult
+from qdrant_client import QdrantClient, models
+
+from backend.app.core.errors import AppError
+from backend.app.schemas.search_schema import CatalogMetadata, ImageSearchResult
 
 
-class CollectionNotFoundError(RuntimeError):
-    pass
-
-
-class QdrantSearchError(RuntimeError):
-    pass
+def catalog_point_id(catalog_item_id: str) -> str:
+    return str(uuid5(NAMESPACE_URL, f"style-finder/catalog/{catalog_item_id}"))
 
 
 class QdrantSearchService:
-    PAYLOAD_FIELDS = (
-        "title",
-        "link",
-        "image_url",
-        "mall_name",
-        "lprice",
-        "hprice",
-        "product_id",
-        "query",
-        "crop_used",
-        "saved_image_path",
-        "embedding_model",
-    )
-
-    def __init__(
-        self,
-        host: str,
-        port: int,
-        collection_name: str,
-        url: str | None = None,
-    ):
+    def __init__(self, host: str, port: int, collection_name: str, url: str | None = None):
         self.collection_name = collection_name
         self.client = QdrantClient(url=url) if url else QdrantClient(host=host, port=port)
 
-    def ensure_collection_exists(self) -> None:
+    def collection_status(self, expected_vector_size: int, expected_model_version: str) -> dict:
         try:
-            collections = self.client.get_collections().collections
-        except Exception as exc:
-            raise QdrantSearchError(f"Could not connect to Qdrant: {exc}") from exc
-
-        collection_names = {collection.name for collection in collections}
-
-        if self.collection_name not in collection_names:
-            raise CollectionNotFoundError(
-                f"Qdrant collection '{self.collection_name}' does not exist. "
-                "Please run the FashionCLIP indexing script first."
+            info = self.client.get_collection(self.collection_name)
+            vector_config = info.config.params.vectors
+            vector_size = getattr(vector_config, "size", None)
+            if vector_size != expected_vector_size:
+                return {"ready": False, "reason": "vector_size_mismatch"}
+            points, _ = self.client.scroll(
+                self.collection_name, limit=1, with_payload=True, with_vectors=False
             )
+            if not points:
+                return {"ready": False, "reason": "empty_collection"}
+            if points[0].payload.get("modelVersion") != expected_model_version:
+                return {"ready": False, "reason": "model_version_mismatch"}
+            return {"ready": True, "reason": "ready"}
+        except Exception:
+            return {"ready": False, "reason": "qdrant_unavailable"}
 
-    def search_similar(self, vector: list[float], top_k: int = 2) -> list[ImageSearchResult]:
-        self.ensure_collection_exists()
-        limit = max(1, int(top_k))
-
+    def search_similar(
+        self, vector: list[float], top_k: int = 2, exclude_point_id: str | None = None
+    ) -> list[ImageSearchResult]:
+        query_filter = None
+        if exclude_point_id:
+            query_filter = models.Filter(
+                must_not=[models.HasIdCondition(has_id=[exclude_point_id])]
+            )
         try:
-            if hasattr(self.client, "search"):
-                points = self.client.search(
-                    collection_name=self.collection_name,
-                    query_vector=vector,
-                    limit=limit,
-                    with_payload=True,
-                    with_vectors=False,
-                )
-            else:
-                response = self.client.query_points(
-                    collection_name=self.collection_name,
-                    query=vector,
-                    limit=limit,
-                    with_payload=True,
-                    with_vectors=False,
-                )
-                points = getattr(response, "points", response)
+            response = self.client.query_points(
+                collection_name=self.collection_name,
+                query=vector,
+                query_filter=query_filter,
+                limit=max(1, top_k),
+                with_payload=True,
+                with_vectors=False,
+            )
+            return [self._point_to_result(point) for point in response.points]
         except Exception as exc:
-            raise QdrantSearchError(f"Qdrant search failed: {exc}") from exc
+            raise AppError("SEARCH_UNAVAILABLE", "검색 서비스를 사용할 수 없습니다.", 503) from exc
 
-        return [self._point_to_result(point) for point in points]
+    def search_by_catalog_id(self, catalog_item_id: str, top_k: int) -> list[ImageSearchResult]:
+        point_id = catalog_point_id(catalog_item_id)
+        try:
+            points = self.client.retrieve(
+                self.collection_name, ids=[point_id], with_payload=True, with_vectors=True
+            )
+        except Exception as exc:
+            raise AppError("SEARCH_UNAVAILABLE", "검색 서비스를 사용할 수 없습니다.", 503) from exc
+        if not points:
+            raise AppError("CATALOG_ITEM_NOT_FOUND", "카탈로그 항목을 찾을 수 없습니다.", 404)
+        vector = points[0].vector
+        if not isinstance(vector, list):
+            raise AppError("SEARCH_UNAVAILABLE", "검색 서비스를 사용할 수 없습니다.", 503)
+        return self.search_similar(vector, top_k, exclude_point_id=point_id)
 
-    def _point_to_result(self, point) -> ImageSearchResult:
-        payload = getattr(point, "payload", None) or {}
-        score = getattr(point, "score", 0.0)
-        data = {field: payload.get(field) for field in self.PAYLOAD_FIELDS}
-        return ImageSearchResult(score=float(score), **data)
+    @staticmethod
+    def _point_to_result(point) -> ImageSearchResult:
+        payload = point.payload or {}
+        metadata = payload.get("metadata") or {}
+        item_id = str(payload.get("catalogItemId", ""))
+        return ImageSearchResult(
+            catalog_item_id=item_id,
+            title=str(payload.get("title", item_id)),
+            image_url=f"/api/catalog/items/{item_id}/image",
+            source_url=payload.get("sourceUrl"),
+            similarity_score=float(point.score),
+            metadata=CatalogMetadata(
+                category=str(metadata.get("category", "unknown")),
+                colors=list(metadata.get("colors") or []),
+                style_tags=list(metadata.get("styleTags") or []),
+            ),
+            model_version=str(payload.get("modelVersion", "unknown")),
+        )
