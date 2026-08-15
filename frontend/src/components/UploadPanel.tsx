@@ -20,7 +20,7 @@ type UploadPanelProps = {
   isLoading: boolean
   isCropping: boolean
   errorMessage: string | null
-  onFileSelect: (file: File) => void
+  onFileSelect: (file: File) => void | Promise<void>
   onCropModeChange: (mode: 'auto' | 'manual') => void
   onAutoCrop: () => void
   onApplyManualCrop: (file: File, previewUrl: string) => void
@@ -91,7 +91,7 @@ export function UploadPanel({
             <small>클릭하거나 이미지를 끌어다 놓을 수 있습니다.</small>
           </div>
         )}
-        <input type="file" accept="image/*" onChange={handleInputChange} />
+        <input type="file" accept="image/jpeg,image/png" onChange={handleInputChange} />
       </label>
 
       {sourceImageUrl && (
