@@ -1,17 +1,16 @@
 services:
   caddy:
-    image: caddy:2
-    container_name: fashion-caddy
-    ports:
-      - "80:80"
-      - "443:443"
+    image: caddy:2.10.2-alpine
+    ports: ["80:80"]
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-http://localhost}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
-      frontend:
-        condition: service_started
+      frontend: { condition: service_healthy }
+      backend: { condition: service_healthy }
     restart: unless-stopped
 
   frontend:
@@ -20,68 +19,59 @@ services:
       dockerfile: frontend/Dockerfile
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
-    container_name: fashion-frontend
-    expose:
-      - "80"
-    depends_on:
-      backend:
-        condition: service_started
+    expose: ["8080"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     restart: unless-stopped
 
   backend:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    container_name: fashion-backend
-    expose:
-      - "8000"
-    env_file:
-      - .env
+    expose: ["8000"]
     environment:
       QDRANT_URL: http://qdrant:6333
-      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-fashion_user}:${MYSQL_PASSWORD:-fashion_password}@mysql:3306/${MYSQL_DATABASE:-fashion_app}
       YOLO_CLOTHING_MODEL_PATH: ${YOLO_CLOTHING_MODEL_PATH:-backend/models/yolov8n-clothing-detection-best.pt}
+      HF_HOME: /app/.cache/huggingface
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-10485760}
+      MAX_IMAGE_PIXELS: ${MAX_IMAGE_PIXELS:-16000000}
+      INFERENCE_MAX_CONCURRENCY: ${INFERENCE_MAX_CONCURRENCY:-1}
+      INFERENCE_QUEUE_TIMEOUT_SECONDS: ${INFERENCE_QUEUE_TIMEOUT_SECONDS:-5}
+      SEARCH_TIMEOUT_SECONDS: ${SEARCH_TIMEOUT_SECONDS:-45}
+      CATALOG_MANIFEST_PATH: /app/catalog/manifest.json
+      CATALOG_IMAGES_DIR: /app/catalog/images
     volumes:
-      - backend_uploads:/app/backend/uploads
+      - hf_cache:/app/.cache/huggingface
+      - ./catalog:/app/catalog:ro
     depends_on:
-      mysql:
-        condition: service_healthy
-      qdrant:
-        condition: service_started
+      qdrant: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    cpus: ${BACKEND_CPUS:-2}
+    mem_limit: ${BACKEND_MEMORY:-4g}
     restart: unless-stopped
 
   qdrant:
-    image: qdrant/qdrant
-    container_name: fashion-qdrant
-    expose:
-      - "6333"
-      - "6334"
-    volumes:
-      - qdrant_storage:/qdrant/storage
-    restart: unless-stopped
-
-  mysql:
-    image: mysql:8
-    container_name: fashion-mysql
-    expose:
-      - "3306"
-    environment:
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-fashion_app}
-      MYSQL_USER: ${MYSQL_USER:-fashion_user}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-fashion_password}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-fashion_root_password}
-    volumes:
-      - mysql_data:/var/lib/mysql
+    image: qdrant/qdrant:v1.18.1
+    expose: ["6333", "6334"]
+    volumes: ["qdrant_storage:/qdrant/storage"]
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/6333'"]
       interval: 10s
-      timeout: 5s
+      timeout: 3s
       retries: 10
+    cpus: ${QDRANT_CPUS:-1}
+    mem_limit: ${QDRANT_MEMORY:-1g}
     restart: unless-stopped
 
 volumes:
   caddy_data:
   caddy_config:
+  hf_cache:
   qdrant_storage:
-  mysql_data:
-  backend_uploads:
