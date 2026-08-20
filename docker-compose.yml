@@ -11,6 +11,7 @@ services:
     depends_on:
       frontend: { condition: service_healthy }
       backend: { condition: service_healthy }
+      member-service: { condition: service_healthy }
     restart: unless-stopped
 
   frontend:
@@ -70,8 +71,44 @@ services:
     mem_limit: ${QDRANT_MEMORY:-1g}
     restart: unless-stopped
 
+  member-service:
+    build:
+      context: .
+      dockerfile: member-service/Dockerfile
+    expose: ["8080"]
+    environment:
+      MEMBER_DB_URL: jdbc:mysql://mysql:3306/stylefinder_member?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      MYSQL_USER: ${MYSQL_USER:-stylefinder}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-change-me}
+      JWT_SECRET: ${JWT_SECRET:-change-this-local-development-secret-to-at-least-32-bytes}
+      MEMBER_CORS_ORIGINS: ${MEMBER_CORS_ORIGINS:-http://localhost,http://localhost:5173}
+    depends_on:
+      mysql: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/health/live || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: stylefinder_member
+      MYSQL_USER: ${MYSQL_USER:-stylefinder}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-change-me}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-change-root-password}
+    volumes: ["mysql_data:/var/lib/mysql"]
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
 volumes:
   caddy_data:
   caddy_config:
   hf_cache:
   qdrant_storage:
+  mysql_data:

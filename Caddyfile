@@ -1,6 +1,11 @@
 {$SITE_ADDRESS:http://localhost} {
     encode gzip zstd
 
+    @member path /api/members/*
+    handle @member {
+        reverse_proxy member-service:8080
+    }
+
     @api path /api/search/* /api/preprocess/* /api/catalog/* /health/*
     handle @api {
         request_body {
