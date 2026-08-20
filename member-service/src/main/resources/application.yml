@@ -1,0 +1,23 @@
+spring:
+  application:
+    name: member-service
+  datasource:
+    url: ${MEMBER_DB_URL:jdbc:mysql://localhost:3306/stylefinder_member?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+    username: ${MYSQL_USER:stylefinder}
+    password: ${MYSQL_PASSWORD:change-me}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+server:
+  port: 8080
+
+app:
+  security:
+    jwt-secret: ${JWT_SECRET:}
+    access-token-seconds: ${JWT_ACCESS_TOKEN_SECONDS:900}
+    refresh-token-seconds: ${JWT_REFRESH_TOKEN_SECONDS:1209600}
+  cors-origins: ${MEMBER_CORS_ORIGINS:http://localhost,http://localhost:5173}
