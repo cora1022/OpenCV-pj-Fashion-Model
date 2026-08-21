@@ -18,6 +18,9 @@ backend/.env
 # Local data and model artifacts
 saved_cropped_images_fashionclip/
 catalog_images/
+catalog/manifest.json
+catalog/images/*
+!catalog/images/.gitkeep
 qdrant_storage/
 backend/models/*.pt
 *.tar.gz

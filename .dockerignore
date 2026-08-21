@@ -8,5 +8,7 @@ backend/uploads
 frontend/node_modules
 frontend/dist
 saved_cropped_images_fashionclip
+catalog/manifest.json
+catalog/images/*
 qdrant_storage
 mysql_data
