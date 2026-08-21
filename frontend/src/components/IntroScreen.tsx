@@ -1,5 +1,11 @@
+import type { Member } from '../api/members'
+
 type IntroScreenProps = {
+  member: Member | null
   onStart: () => void
+  onLogin: () => void
+  onSignup: () => void
+  onLogout: () => void
 }
 
 const discoverySteps = [
@@ -20,7 +26,7 @@ const discoverySteps = [
   },
 ]
 
-export function IntroScreen({ onStart }: IntroScreenProps) {
+export function IntroScreen({ member, onStart, onLogin, onSignup, onLogout }: IntroScreenProps) {
   return (
     <main className="fashion-home">
       <header className="fashion-nav">
@@ -32,7 +38,7 @@ export function IntroScreen({ onStart }: IntroScreenProps) {
           <a href="#service">서비스 소개</a>
           <a href="#how">사용 방법</a>
           <a
-            href="https://github.com/cora1022/OpenCV-pj-Fashion-Model"
+            href="https://github.com/cora1022/fashion-portfolio-project"
             target="_blank"
             rel="noreferrer"
           >
@@ -40,10 +46,23 @@ export function IntroScreen({ onStart }: IntroScreenProps) {
           </a>
         </nav>
 
-        <button type="button" onClick={onStart}>
-          이미지 검색
-          <span aria-hidden="true">↗</span>
-        </button>
+        <div className="fashion-member-actions">
+          {member ? (
+            <>
+              <span>{member.displayName}님</span>
+              <button type="button" className="fashion-auth-link" onClick={onLogout}>로그아웃</button>
+            </>
+          ) : (
+            <>
+              <button type="button" className="fashion-auth-link" onClick={onLogin}>로그인</button>
+              <button type="button" className="fashion-auth-link" onClick={onSignup}>회원가입</button>
+            </>
+          )}
+          <button type="button" className="fashion-search-link" onClick={onStart}>
+            이미지 검색
+            <span aria-hidden="true">↗</span>
+          </button>
+        </div>
       </header>
 
       <section className="fashion-hero" id="top" aria-labelledby="fashion-hero-title">
@@ -170,10 +189,10 @@ export function IntroScreen({ onStart }: IntroScreenProps) {
 
       <aside className="fashion-project-note" aria-label="포트폴리오 프로젝트 안내">
         <p>개인 포트폴리오 프로젝트</p>
-        <strong>현재 React와 FastAPI로 구성되어 있습니다.</strong>
-        <span>회원과 저장 기능을 위한 Spring Boot 서버를 추가할 예정입니다.</span>
+        <strong>React, Spring Boot, FastAPI를 분리해 구성하고 있습니다.</strong>
+        <span>회원 인증과 사용자 활동 기능을 단계적으로 통합하고 있습니다.</span>
         <a
-          href="https://github.com/cora1022/OpenCV-pj-Fashion-Model"
+          href="https://github.com/cora1022/fashion-portfolio-project"
           target="_blank"
           rel="noreferrer"
         >

@@ -94,6 +94,59 @@
   color: var(--fashion-white);
 }
 
+.fashion-member-actions {
+  display: flex;
+  align-items: center;
+  justify-self: end;
+  gap: 14px;
+}
+
+.fashion-member-actions > span {
+  max-width: 110px;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fashion-member-actions button {
+  border-radius: 0;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.fashion-auth-link {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 8px 0;
+}
+
+.fashion-auth-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 5px;
+}
+
+.fashion-search-link {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+  border: 1px solid var(--fashion-black);
+  background: transparent;
+  color: inherit;
+  padding: 0 15px;
+}
+
+.fashion-search-link:hover {
+  background: var(--fashion-black);
+  color: var(--fashion-white);
+}
+
 .fashion-hero {
   position: relative;
   width: min(1500px, 100%);
@@ -639,14 +692,26 @@
     padding: 0 17px;
   }
 
-  .fashion-nav > button {
-    min-height: 36px;
-    border-color: var(--fashion-black);
-    padding: 0 11px;
-    font-size: 10px;
+  .fashion-member-actions {
+    gap: 9px;
   }
 
-  .fashion-nav > button:hover {
+  .fashion-member-actions button {
+    font-size: 9px;
+  }
+
+  .fashion-member-actions > span {
+    display: none;
+  }
+
+  .fashion-search-link {
+    min-height: 36px;
+    border-color: var(--fashion-black);
+    gap: 10px;
+    padding: 0 11px;
+  }
+
+  .fashion-search-link:hover {
     background: var(--fashion-black);
     color: var(--fashion-white);
   }

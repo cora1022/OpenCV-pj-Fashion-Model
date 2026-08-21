@@ -65,10 +65,10 @@ export function UploadPanel({
   return (
     <section className="panel upload-panel" aria-labelledby="upload-title">
       <div className="panel-heading">
-        <p className="eyebrow">Step 1</p>
-        <h2 id="upload-title">이미지 업로드</h2>
+        <p className="eyebrow">SELECT IMAGE</p>
+        <h2 id="upload-title">사진 선택</h2>
         <p className="panel-description">
-          직접 영역을 자르거나 OpenCV 머신러닝 크롭을 적용한 뒤 검색합니다.
+          JPG 또는 PNG 사진을 올린 뒤 검색할 옷의 영역을 확인해주세요.
         </p>
       </div>
 
@@ -87,8 +87,8 @@ export function UploadPanel({
         ) : (
           <div className="empty-upload">
             <span aria-hidden="true">+</span>
-            <p>검색할 패션 이미지를 선택해주세요.</p>
-            <small>클릭하거나 이미지를 끌어다 놓을 수 있습니다.</small>
+            <p>사진을 선택해주세요.</p>
+            <small>클릭하거나 이곳으로 끌어다 놓기</small>
           </div>
         )}
         <input type="file" accept="image/jpeg,image/png" onChange={handleInputChange} />
@@ -101,14 +101,14 @@ export function UploadPanel({
             type="button"
             onClick={() => onCropModeChange('auto')}
           >
-            OpenCV 자동 크롭
+            자동으로 영역 찾기
           </button>
           <button
             className={cropMode === 'manual' ? 'is-active' : ''}
             type="button"
             onClick={() => onCropModeChange('manual')}
           >
-            직접 크롭
+            직접 영역 선택
           </button>
         </div>
       )}
@@ -147,7 +147,7 @@ export function UploadPanel({
             onClick={onAutoCrop}
             disabled={isCropping || isLoading}
           >
-            {isCropping ? 'OpenCV 분석 중...' : 'OpenCV 자동 크롭 미리보기'}
+            {isCropping ? '영역을 찾는 중...' : '자동으로 옷 영역 찾기'}
           </button>
         </div>
       )}
@@ -195,7 +195,7 @@ export function UploadPanel({
         onClick={onSearch}
         disabled={!previewImageUrl || !canSearch || isLoading || isCropping}
       >
-        {isLoading ? '검색 중...' : '현재 미리보기로 검색하기'}
+        {isLoading ? '검색 중...' : '이 영역으로 검색하기'}
       </button>
     </section>
   )

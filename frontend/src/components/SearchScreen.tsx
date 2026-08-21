@@ -75,9 +75,57 @@ export function SearchScreen({ onBack }: Props) {
     try { const response = await searchCatalogItem(item.catalogItemId); setResults(response.results); setRequestedTopK(2); setResultRevealKey((value) => value + 1) } catch (error) { setErrorMessage(error instanceof Error ? error.message : '유사 이미지 검색 중 오류가 발생했습니다.') } finally { setIsLoading(false) }
   }
 
-  return <main className="search-screen"><header className="app-header"><div><p className="eyebrow">Fashion Similarity Search</p><h1>이미지로 찾는 패션 유사도 검사 서비스</h1></div><div className="header-actions"><button className="text-button" type="button" onClick={onBack}>처음으로</button></div></header>
-    <section className="step-modal-shell" aria-label="이미지 유사도 검색"><div className="step-rail"><button className={activeStep === 1 ? 'step-pill is-active' : 'step-pill'} type="button" onClick={() => setActiveStep(1)}><span>Step 1</span>이미지 검색</button><button className={activeStep === 2 ? 'step-pill is-active' : 'step-pill'} type="button" onClick={() => setActiveStep(2)} disabled={results.length === 0 && !isLoading}><span>Step 2</span>검색 결과</button></div>
-    {activeStep === 1 ? <div className="step-modal step-one-modal"><UploadPanel sourceImageUrl={originalPreviewUrl} previewImageUrl={searchPreviewUrl} cropMode={cropMode} uploadRevealKey={uploadRevealKey} autoCropMeta={autoCropMeta} canSearch={Boolean(searchFile)} isLoading={isLoading} isCropping={isCropping} errorMessage={errorMessage} onFileSelect={handleFileSelect} onCropModeChange={handleCropModeChange} onAutoCrop={handleAutoCrop} onApplyManualCrop={handleManualCrop} onError={setErrorMessage} onSearch={handleSearch} /></div> : <div className="step-modal step-two-modal"><div className="result-modal-toolbar"><div><p className="eyebrow">Step 2</p><h2>유사 이미지 검색 결과</h2></div><button className="secondary-button" type="button" onClick={() => setActiveStep(1)}>이미지 다시 선택</button></div><ResultGrid results={results} isLoading={isLoading} isLoadingMore={isLoadingMore} revealKey={resultRevealKey} onFindMore={handleFindMore} onFindSimilarResult={handleFindSimilarResult} />{errorMessage && <p className="error-message">{errorMessage}</p>}</div>}</section>
-    <SearchLoadingOverlay isVisible={isLoading || isLoadingMore} mode={isLoadingMore ? 'more' : 'initial'} targetCount={isLoadingMore ? requestedTopK + 2 : 2} />
-  </main>
+  return (
+    <main className="search-screen editorial-search">
+      <header className="search-workspace-nav">
+        <button className="search-workspace-logo" type="button" onClick={onBack}>
+          STYLE FINDER
+        </button>
+        <p>IMAGE SEARCH</p>
+        <button className="search-home-link" type="button" onClick={onBack}>
+          메인으로 <span aria-hidden="true">↗</span>
+        </button>
+      </header>
+
+      <section className="search-workspace-heading">
+        <div className="search-section-label"><span>01</span><p>이미지 검색</p></div>
+        <div>
+          <h1>찾고 싶은 옷이 있는<br />사진을 올려주세요.</h1>
+          <p>사진을 선택하고 옷이 있는 영역을 확인하면<br />비슷한 이미지를 유사도 순서로 보여드립니다.</p>
+        </div>
+      </section>
+
+      <section className="step-modal-shell" aria-label="이미지 유사도 검색">
+        <div className="step-rail">
+          <button className={activeStep === 1 ? 'step-pill is-active' : 'step-pill'} type="button" onClick={() => setActiveStep(1)}>
+            <span>01</span><strong>사진 선택과 영역 확인</strong>
+          </button>
+          <button className={activeStep === 2 ? 'step-pill is-active' : 'step-pill'} type="button" onClick={() => setActiveStep(2)} disabled={results.length === 0 && !isLoading}>
+            <span>02</span><strong>비슷한 이미지 보기</strong>
+          </button>
+        </div>
+
+        {activeStep === 1 ? (
+          <div className="step-modal step-one-modal">
+            <UploadPanel sourceImageUrl={originalPreviewUrl} previewImageUrl={searchPreviewUrl} cropMode={cropMode} uploadRevealKey={uploadRevealKey} autoCropMeta={autoCropMeta} canSearch={Boolean(searchFile)} isLoading={isLoading} isCropping={isCropping} errorMessage={errorMessage} onFileSelect={handleFileSelect} onCropModeChange={handleCropModeChange} onAutoCrop={handleAutoCrop} onApplyManualCrop={handleManualCrop} onError={setErrorMessage} onSearch={handleSearch} />
+          </div>
+        ) : (
+          <div className="step-modal step-two-modal">
+            <div className="result-modal-toolbar">
+              <div><p className="eyebrow">RESULT · {String(results.length).padStart(2, '0')}</p><h2>비슷한 이미지</h2></div>
+              <button className="secondary-button" type="button" onClick={() => setActiveStep(1)}>다른 사진 선택</button>
+            </div>
+            <ResultGrid results={results} isLoading={isLoading} isLoadingMore={isLoadingMore} revealKey={resultRevealKey} onFindMore={handleFindMore} onFindSimilarResult={handleFindSimilarResult} />
+            {errorMessage && <p className="error-message">{errorMessage}</p>}
+          </div>
+        )}
+      </section>
+
+      <footer className="search-workspace-footer">
+        <span>REACT · FASTAPI · FASHIONCLIP · QDRANT</span>
+        <span>STYLE FINDER © 2026</span>
+      </footer>
+      <SearchLoadingOverlay isVisible={isLoading || isLoadingMore} mode={isLoadingMore ? 'more' : 'initial'} targetCount={isLoadingMore ? requestedTopK + 2 : 2} />
+    </main>
+  )
 }
