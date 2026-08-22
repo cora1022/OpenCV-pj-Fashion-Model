@@ -31,14 +31,15 @@ class FakeQdrant:
         ][:top_k]
 
 
-def test_image_search_uses_camel_case_contract(jpeg_bytes):
-    app = create_app(load_services=False)
+def test_image_search_uses_camel_case_contract(jpeg_bytes, jwt_context):
+    app = create_app(config=jwt_context.settings, load_services=False)
     app.state.fashionclip_service = FakeModel()
     app.state.qdrant_service = FakeQdrant()
     with TestClient(app) as client:
         response = client.post(
             "/api/search/image?topK=2",
             files={"file": ("shirt.jpg", jpeg_bytes, "image/jpeg")},
+            headers=jwt_context.authorization(),
         )
     assert response.status_code == 200
     assert response.json()["results"][0]["catalogItemId"] == "shirt-blue-001"
@@ -54,8 +55,8 @@ def test_removed_remote_url_endpoint_returns_404():
     assert response.status_code == 404
 
 
-def test_internal_exception_is_not_exposed(jpeg_bytes):
-    app = create_app(load_services=False)
+def test_internal_exception_is_not_exposed(jpeg_bytes, jwt_context):
+    app = create_app(config=jwt_context.settings, load_services=False)
     app.state.fashionclip_service = FakeModel()
     app.state.qdrant_service = SimpleNamespace(
         search_similar=lambda *_args, **_kwargs: (_ for _ in ()).throw(
@@ -64,7 +65,9 @@ def test_internal_exception_is_not_exposed(jpeg_bytes):
     )
     with TestClient(app, raise_server_exceptions=False) as client:
         response = client.post(
-            "/api/search/image", files={"file": ("shirt.jpg", jpeg_bytes, "image/jpeg")}
+            "/api/search/image",
+            files={"file": ("shirt.jpg", jpeg_bytes, "image/jpeg")},
+            headers=jwt_context.authorization(),
         )
     assert response.status_code == 500
     assert response.json()["error"]["code"] == "INTERNAL_ERROR"

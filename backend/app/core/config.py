@@ -94,6 +94,17 @@ class Settings:
             ],
         )
     )
+    jwt_public_key_path: Path = field(
+        default_factory=lambda: Path(
+            os.getenv("JWT_PUBLIC_KEY_PATH", str(ROOT_DIR / "secrets" / "jwt-public.pem"))
+        )
+    )
+    jwt_issuer: str = field(
+        default_factory=lambda: os.getenv("JWT_ISSUER", "style-finder-member-service")
+    )
+    jwt_audience: str = field(
+        default_factory=lambda: os.getenv("JWT_AUDIENCE", "style-finder-api")
+    )
 
 
 settings = Settings()

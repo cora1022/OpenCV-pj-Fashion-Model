@@ -6,7 +6,7 @@ from io import BytesIO
 from typing import Annotated
 
 import anyio
-from fastapi import FastAPI, File, Query, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
@@ -15,6 +15,7 @@ from backend.app.catalog.image_store import CatalogImageStore
 from backend.app.core.config import Settings, settings
 from backend.app.core.errors import AppError, install_error_handlers
 from backend.app.schemas.search_schema import ImageSearchResponse
+from backend.app.security.jwt_auth import AuthenticatedUser, JwtAccessVerifier, require_access_token
 from backend.app.services.fashionclip_service import FashionClipService
 from backend.app.services.image_validation import validate_upload
 from backend.app.services.inference_executor import InferenceExecutor
@@ -48,6 +49,9 @@ def _build_services(app: FastAPI, config: Settings) -> None:
     )
     app.state.model_load_error = None
     app.state.readiness_cache = None
+    app.state.jwt_verifier = JwtAccessVerifier(
+        config.jwt_public_key_path, config.jwt_issuer, config.jwt_audience
+    )
 
 
 async def _load_local_services(app: FastAPI) -> None:
@@ -140,6 +144,7 @@ def create_app(config: Settings | None = None, *, load_services: bool = True) ->
     async def search_image(
         request: Request,
         file: Annotated[UploadFile, File()],
+        _user: Annotated[AuthenticatedUser, Depends(require_access_token)],
         top_k: int = Query(default=2, alias="topK", ge=1, le=20),
     ):
         validated = await validate_upload(
@@ -158,7 +163,11 @@ def create_app(config: Settings | None = None, *, load_services: bool = True) ->
         return ImageSearchResponse(results=results)
 
     @application.post("/api/preprocess/crop")
-    async def crop_image(request: Request, file: Annotated[UploadFile, File()]):
+    async def crop_image(
+        request: Request,
+        file: Annotated[UploadFile, File()],
+        _user: Annotated[AuthenticatedUser, Depends(require_access_token)],
+    ):
         validated = await validate_upload(
             file,
             max_bytes=active_settings.max_upload_bytes,

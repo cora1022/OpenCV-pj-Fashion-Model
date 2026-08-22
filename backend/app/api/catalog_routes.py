@@ -1,7 +1,10 @@
-from fastapi import APIRouter, Query, Request
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import FileResponse
 
 from backend.app.schemas.search_schema import ImageSearchResponse
+from backend.app.security.jwt_auth import AuthenticatedUser, require_access_token
 
 router = APIRouter()
 
@@ -10,6 +13,7 @@ router = APIRouter()
 async def search_catalog_item(
     request: Request,
     catalog_item_id: str,
+    _user: Annotated[AuthenticatedUser, Depends(require_access_token)],
     top_k: int = Query(default=2, alias="topK", ge=1, le=20),
 ):
     results = await request.app.state.inference_executor.run(
