@@ -11,7 +11,10 @@ spring:
     enabled: true
 app:
   security:
-    jwt-secret: test-secret-that-is-at-least-thirty-two-bytes-long
+    private-key-path: overridden-by-test
+    public-key-path: overridden-by-test
+    issuer: test-member-service
+    audience: test-style-finder-api
     access-token-seconds: 900
     refresh-token-seconds: 3600
   cors-origins: http://localhost:5173

@@ -17,7 +17,10 @@ server:
 
 app:
   security:
-    jwt-secret: ${JWT_SECRET:}
+    private-key-path: ${JWT_PRIVATE_KEY_PATH:secrets/jwt-private.pem}
+    public-key-path: ${JWT_PUBLIC_KEY_PATH:secrets/jwt-public.pem}
+    issuer: ${JWT_ISSUER:style-finder-member-service}
+    audience: ${JWT_AUDIENCE:style-finder-api}
     access-token-seconds: ${JWT_ACCESS_TOKEN_SECONDS:900}
     refresh-token-seconds: ${JWT_REFRESH_TOKEN_SECONDS:1209600}
   cors-origins: ${MEMBER_CORS_ORIGINS:http://localhost,http://localhost:5173}
