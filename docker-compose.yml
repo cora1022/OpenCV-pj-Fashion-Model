@@ -44,11 +44,16 @@ services:
       SEARCH_TIMEOUT_SECONDS: ${SEARCH_TIMEOUT_SECONDS:-45}
       CATALOG_MANIFEST_PATH: /app/catalog/manifest.json
       CATALOG_IMAGES_DIR: /app/catalog/images
+      JWT_PUBLIC_KEY_PATH: /run/jwt-public/public.pem
+      JWT_ISSUER: ${JWT_ISSUER:-style-finder-member-service}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-style-finder-api}
     volumes:
       - hf_cache:/app/.cache/huggingface
       - ./catalog:/app/catalog:ro
+      - jwt_public:/run/jwt-public:ro
     depends_on:
       qdrant: { condition: service_healthy }
+      jwt-keygen: { condition: service_completed_successfully }
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live')\""]
       interval: 15s
@@ -80,10 +85,17 @@ services:
       MEMBER_DB_URL: jdbc:mysql://mysql:3306/stylefinder_member?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
       MYSQL_USER: ${MYSQL_USER:-stylefinder}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-change-me}
-      JWT_SECRET: ${JWT_SECRET:-change-this-local-development-secret-to-at-least-32-bytes}
+      JWT_PRIVATE_KEY_PATH: /run/jwt-private/private.pem
+      JWT_PUBLIC_KEY_PATH: /run/jwt-public/public.pem
+      JWT_ISSUER: ${JWT_ISSUER:-style-finder-member-service}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-style-finder-api}
       MEMBER_CORS_ORIGINS: ${MEMBER_CORS_ORIGINS:-http://localhost,http://localhost:5173}
+    volumes:
+      - jwt_private:/run/jwt-private:ro
+      - jwt_public:/run/jwt-public:ro
     depends_on:
       mysql: { condition: service_healthy }
+      jwt-keygen: { condition: service_completed_successfully }
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/health/live || exit 1"]
       interval: 15s
@@ -106,9 +118,28 @@ services:
       retries: 10
     restart: unless-stopped
 
+  jwt-keygen:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command:
+      - /app/.venv/bin/python
+      - -m
+      - backend.app.security.keygen
+      - --private-key
+      - /run/jwt-private/private.pem
+      - --public-key
+      - /run/jwt-public/public.pem
+    volumes:
+      - jwt_private:/run/jwt-private
+      - jwt_public:/run/jwt-public
+    restart: "no"
+
 volumes:
   caddy_data:
   caddy_config:
   hf_cache:
   qdrant_storage:
   mysql_data:
+  jwt_private:
+  jwt_public:

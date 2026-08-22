@@ -1,4 +1,5 @@
 import { toUserError } from './errors'
+import { session } from './members'
 
 export type CatalogMetadata = {
   category: string
@@ -33,7 +34,12 @@ const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') || ''
 async function requestSearch(path: string, file?: File) {
   const formData = file ? new FormData() : undefined
   if (file) formData?.append('file', file)
-  const response = await fetch(`${apiBaseUrl}${path}`, { method: 'POST', body: formData })
+  const token = session.token
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    method: 'POST',
+    body: formData,
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  })
   if (!response.ok) throw await toUserError(response, '이미지 검색 중 오류가 발생했습니다.')
   return (await response.json()) as ImageSearchResponse
 }
@@ -49,7 +55,12 @@ export function searchCatalogItem(catalogItemId: string, topK = 2) {
 export async function cropImage(file: File): Promise<CropImageResult> {
   const formData = new FormData()
   formData.append('file', file)
-  const response = await fetch(`${apiBaseUrl}/api/preprocess/crop`, { method: 'POST', body: formData })
+  const token = session.token
+  const response = await fetch(`${apiBaseUrl}/api/preprocess/crop`, {
+    method: 'POST',
+    body: formData,
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  })
   if (!response.ok) throw await toUserError(response, '자동 크롭 중 오류가 발생했습니다.')
   const blob = await response.blob()
   const cropBoxHeader = response.headers.get('X-Crop-Box')

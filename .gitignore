@@ -23,6 +23,8 @@ catalog/images/*
 !catalog/images/.gitkeep
 qdrant_storage/
 backend/models/*.pt
+secrets/
+*.pem
 *.tar.gz
 
 # IDE / OS

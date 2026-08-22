@@ -4,5 +4,6 @@ FastAPI owns image validation, preprocessing, embedding and vector search. Sprin
 owns members, tokens and the user-activity API baseline in MySQL. The services do not
 share a database. Spring Boot stores activity snapshots and never reads Qdrant points.
 
-The service boundary is implemented, while server-side authorization between the
-Spring-issued access token and FastAPI remains planned work.
+Spring Boot signs access tokens with an RSA private key, while FastAPI validates protected image
+operations with the corresponding public key. The services share token contract configuration but
+do not share application data or a database.

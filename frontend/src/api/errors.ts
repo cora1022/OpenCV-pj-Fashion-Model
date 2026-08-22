@@ -8,6 +8,9 @@ export type ApiErrorCode =
   | 'SEARCH_BUSY'
   | 'SEARCH_UNAVAILABLE'
   | 'INTERNAL_ERROR'
+  | 'AUTHENTICATION_REQUIRED'
+  | 'ACCESS_TOKEN_EXPIRED'
+  | 'ACCESS_TOKEN_INVALID'
 
 const messages: Record<ApiErrorCode, string> = {
   INVALID_IMAGE: '올바른 이미지 파일을 선택해주세요.',
@@ -19,6 +22,9 @@ const messages: Record<ApiErrorCode, string> = {
   SEARCH_BUSY: '검색 요청이 많습니다. 잠시 후 다시 시도해주세요.',
   SEARCH_UNAVAILABLE: '검색 서비스를 사용할 수 없습니다. 잠시 후 다시 시도해주세요.',
   INTERNAL_ERROR: '요청을 처리하지 못했습니다. 잠시 후 다시 시도해주세요.',
+  AUTHENTICATION_REQUIRED: '로그인이 필요합니다.',
+  ACCESS_TOKEN_EXPIRED: '로그인이 만료되었습니다. 다시 로그인해주세요.',
+  ACCESS_TOKEN_INVALID: '로그인 정보를 확인할 수 없습니다. 다시 로그인해주세요.',
 }
 
 export async function toUserError(response: Response, fallback: string): Promise<Error> {

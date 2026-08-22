@@ -12,3 +12,5 @@ catalog/manifest.json
 catalog/images/*
 qdrant_storage
 mysql_data
+secrets
+*.pem

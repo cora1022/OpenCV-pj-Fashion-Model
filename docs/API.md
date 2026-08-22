@@ -4,9 +4,9 @@ All JSON fields use camelCase. Errors never expose internal exception text.
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /api/preprocess/crop` | JPEG/PNG file → JPEG crop with `X-Crop-*` headers |
-| `POST /api/search/image?topK=2` | Search an already selected/cropped image |
-| `POST /api/search/catalog/{catalogItemId}?topK=2` | Search from an indexed catalog vector, excluding itself |
+| `POST /api/preprocess/crop` | Bearer access token; JPEG/PNG file → JPEG crop with `X-Crop-*` headers |
+| `POST /api/search/image?topK=2` | Bearer access token; search an already selected/cropped image |
+| `POST /api/search/catalog/{catalogItemId}?topK=2` | Bearer access token; search from an indexed catalog vector, excluding itself |
 | `GET /api/catalog/items/{catalogItemId}/image` | Serve only a manifest-registered local image |
 | `GET /health/live` | Process liveness |
 | `GET /health/ready` | Model, manifest, Qdrant collection/version readiness |
@@ -19,7 +19,8 @@ Search results contain `catalogItemId`, `title`, `imageUrl`, `sourceUrl`,
 Errors use `{ "error": { "code", "message", "requestId" } }`. Codes are:
 `INVALID_IMAGE`, `UNSUPPORTED_IMAGE_TYPE`, `IMAGE_TOO_LARGE`,
 `IMAGE_DIMENSIONS_EXCEEDED`, `CATALOG_NOT_READY`, `CATALOG_ITEM_NOT_FOUND`,
-`SEARCH_BUSY`, `SEARCH_UNAVAILABLE`, and `INTERNAL_ERROR`.
+`SEARCH_BUSY`, `SEARCH_UNAVAILABLE`, `AUTHENTICATION_REQUIRED`,
+`ACCESS_TOKEN_EXPIRED`, `ACCESS_TOKEN_INVALID`, and `INTERNAL_ERROR`.
 
 ## Member API baseline
 
@@ -35,9 +36,9 @@ Member JSON fields also use camelCase and are routed to Spring Boot.
 | `GET/POST/DELETE /api/members/search-histories` | Bearer access token | Activity API baseline |
 | `GET/POST/DELETE /api/members/saved-results` | Bearer access token | Saved-result API baseline |
 
-The current token response includes both tokens in JSON. HttpOnly refresh cookies, browser session
-restoration, final activity DTOs and consistent Spring Security JSON 401/403 responses are planned
-security work, not completed behavior.
+The current token response includes both tokens in JSON. Access tokens are RS256 JWTs with issuer,
+audience, subject, role, type, issued-at and expiry claims. Spring Boot owns the private key and
+FastAPI verifies protected search routes with the public key. Both services return the common JSON
+error envelope for authentication failures.
 
-The React login gate does not yet authorize FastAPI endpoints. Search and preprocess endpoints will
-require the Spring-issued access token after cross-service token verification is implemented.
+HttpOnly refresh cookies, browser session restoration and final activity DTOs remain planned work.

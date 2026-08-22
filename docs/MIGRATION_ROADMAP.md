@@ -18,17 +18,18 @@
 - Added signup, login, refresh, logout and member lookup endpoints.
 - Added initial search-history and saved-result tables and endpoints.
 - Added React signup/login gate and unified Docker Compose routing.
+- Added RS256 access tokens with private/public key separation between Spring Boot and FastAPI.
+- Enforced access tokens on image search, crop and catalog-ID re-search APIs.
+- Added safe JSON 401/403 responses and member-service integration tests.
 
 ## Required before portfolio release
 
-1. Enforce Spring access tokens on FastAPI search and preprocess APIs.
-2. Move refresh tokens to HttpOnly cookies and restore sessions after reload.
-3. Return consistent JSON 401/403 responses from Spring Security.
-4. Complete activity DTOs, ownership queries, JSON metadata and React My Page.
-5. Add Spring unit/integration tests and a member-service CI job.
-6. Make member readiness depend on MySQL and apply a real search execution timeout.
-7. Pin a verifiable model revision for new public catalog vectors.
-8. Add a small rights-cleared public demo catalog and measured performance results.
-9. Update screenshots and architecture evidence after the security baseline is complete.
+1. Move refresh tokens to HttpOnly cookies and restore sessions after reload.
+2. Complete activity DTOs, ownership queries, JSON metadata and React My Page.
+3. Add a member-service job to GitHub Actions.
+4. Make member readiness depend on MySQL and apply a real search execution timeout.
+5. Pin a verifiable model revision for new public catalog vectors.
+6. Add a small rights-cleared public demo catalog and measured performance results.
+7. Update screenshots and architecture evidence after the security baseline is complete.
 
 The ignored legacy Naver catalog is for local verification only and is not a release artifact.

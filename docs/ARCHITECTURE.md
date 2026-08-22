@@ -17,9 +17,9 @@ The applications do not share a database.
 
 | Component | Current responsibility | Storage |
 |---|---|---|
-| React | Landing, signup/login UI, upload, crop and search flow | Access token in memory only |
-| Spring Boot | Members, Spring Security, token baseline, activity API baseline | MySQL |
-| FastAPI | Image validation, crop, embedding and vector search | Qdrant and local catalog |
+| React | Landing, signup/login UI, authenticated upload, crop and search flow | Access token in memory only |
+| Spring Boot | Members, Spring Security, RS256 token issuer, activity API baseline | MySQL and private signing key volume |
+| FastAPI | Access-token verification, image validation, crop, embedding and vector search | Qdrant, local catalog and public verification key volume |
 | Catalog indexer | Manifest validation and idempotent vector indexing | Local files → Qdrant |
 | Caddy | Same-origin routing and request-size boundary | None |
 
@@ -37,10 +37,11 @@ verify MySQL. Caddy's public `/health/*` route currently targets FastAPI.
 
 ## Authentication status
 
-Signup, login, member lookup and token persistence exist in Spring Boot. React currently gates the
-search screen after login, but FastAPI search endpoints do not yet validate the Spring access token.
-Server-side search authorization, HttpOnly refresh cookies and browser session restoration are the
-next security baseline. Until then, the UI gate must not be described as API authorization.
+Signup, login, member lookup and token persistence exist in Spring Boot. Spring signs access tokens
+with RS256; FastAPI verifies the signature, issuer, audience, expiry and access-token type before
+search, crop or catalog re-search. The private key is mounted only into the member service, while
+FastAPI receives the public key. HttpOnly refresh cookies and browser session restoration remain the
+next security baseline.
 
 ## User activity status
 
