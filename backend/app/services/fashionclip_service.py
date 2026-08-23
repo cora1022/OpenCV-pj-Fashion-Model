@@ -10,7 +10,11 @@ class InvalidImageError(ValueError):
 
 
 class FashionClipService:
-    def __init__(self, model_name: str, model_revision: str = "main"):
+    def __init__(
+        self,
+        model_name: str,
+        model_revision: str = "7e3ba62ce16b379a1ab479346b66f192e76f51b7",
+    ):
         self.model_name = model_name
         self.model_revision = model_revision
         self.device = "cuda" if torch.cuda.is_available() else "cpu"

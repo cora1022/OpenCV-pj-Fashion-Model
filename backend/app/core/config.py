@@ -40,7 +40,10 @@ class Settings:
         )
     )
     fashionclip_model_revision: str = field(
-        default_factory=lambda: os.getenv("FASHIONCLIP_MODEL_REVISION", "main")
+        default_factory=lambda: os.getenv(
+            "FASHIONCLIP_MODEL_REVISION",
+            "7e3ba62ce16b379a1ab479346b66f192e76f51b7",
+        )
     )
     expected_vector_size: int = field(
         default_factory=lambda: _get_int("FASHIONCLIP_VECTOR_SIZE", 512)

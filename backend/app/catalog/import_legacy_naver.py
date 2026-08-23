@@ -16,7 +16,7 @@ from qdrant_client import QdrantClient, models
 from backend.app.services.qdrant_service import catalog_point_id
 
 MODEL_NAME = "patrickjohncyh/fashion-clip"
-MODEL_REVISION = "main"
+MODEL_REVISION = "legacy-unverified"
 MODEL_VERSION = f"{MODEL_NAME}@{MODEL_REVISION}"
 VECTOR_SIZE = 512
 
