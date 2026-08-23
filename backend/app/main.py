@@ -45,7 +45,9 @@ def _build_services(app: FastAPI, config: Settings) -> None:
         config.catalog_manifest_path, config.catalog_images_dir
     )
     app.state.inference_executor = InferenceExecutor(
-        config.inference_max_concurrency, config.inference_queue_timeout_seconds
+        config.inference_max_concurrency,
+        config.inference_queue_timeout_seconds,
+        config.search_timeout_seconds,
     )
     app.state.model_load_error = None
     app.state.readiness_cache = None

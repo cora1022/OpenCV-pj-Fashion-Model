@@ -25,3 +25,29 @@ async def test_queue_timeout_returns_search_busy():
         group.start_soon(queued)
 
     assert errors == ["SEARCH_BUSY"]
+
+
+async def test_execution_timeout_returns_504_without_releasing_active_slot_early():
+    executor = InferenceExecutor(
+        max_concurrency=1,
+        queue_timeout_seconds=0.01,
+        execution_timeout_seconds=0.015,
+    )
+
+    try:
+        await executor.run(time.sleep, 0.08)
+    except AppError as exc:
+        assert exc.code == "SEARCH_TIMEOUT"
+        assert exc.status_code == 504
+    else:
+        raise AssertionError("execution timeout was not enforced")
+
+    try:
+        await executor.run(lambda: None)
+    except AppError as exc:
+        assert exc.code == "SEARCH_BUSY"
+    else:
+        raise AssertionError("the running worker released its limiter slot too early")
+
+    await anyio.sleep(0.09)
+    assert await executor.run(lambda: "ready") == "ready"
