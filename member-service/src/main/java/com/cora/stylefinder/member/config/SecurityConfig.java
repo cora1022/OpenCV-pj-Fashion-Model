@@ -18,52 +18,55 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 @Configuration
 public class SecurityConfig {
-    @Bean
-    PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
+  @Bean
+  PasswordEncoder passwordEncoder() {
+    return new BCryptPasswordEncoder();
+  }
 
-    @Bean
-    SecurityFilterChain security(
-            HttpSecurity http,
-            JwtAuthenticationFilter jwtFilter,
-            RequestIdFilter requestIdFilter,
-            RestAuthenticationEntryPoint authenticationEntryPoint,
-            RestAccessDeniedHandler accessDeniedHandler) throws Exception {
-        return http
-                .csrf(csrf -> csrf.disable())
-                .cors(cors -> {})
-                .sessionManagement(session ->
-                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .exceptionHandling(errors -> errors
-                        .authenticationEntryPoint(authenticationEntryPoint)
-                        .accessDeniedHandler(accessDeniedHandler))
-                .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers(
-                                "/health/**",
-                                "/api/members/signup",
-                                "/api/members/login",
-                                "/api/members/token/refresh")
-                        .permitAll()
-                        .requestMatchers("/api/members/admin/**")
-                        .hasRole("ADMIN")
-                        .anyRequest()
-                        .authenticated())
-                .addFilterBefore(requestIdFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterAfter(jwtFilter, RequestIdFilter.class)
-                .build();
-    }
+  @Bean
+  SecurityFilterChain security(
+      HttpSecurity http,
+      JwtAuthenticationFilter jwtFilter,
+      RequestIdFilter requestIdFilter,
+      RestAuthenticationEntryPoint authenticationEntryPoint,
+      RestAccessDeniedHandler accessDeniedHandler)
+      throws Exception {
+    return http.csrf(csrf -> csrf.disable())
+        .cors(cors -> {})
+        .sessionManagement(
+            session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+        .exceptionHandling(
+            errors ->
+                errors
+                    .authenticationEntryPoint(authenticationEntryPoint)
+                    .accessDeniedHandler(accessDeniedHandler))
+        .authorizeHttpRequests(
+            authorize ->
+                authorize
+                    .requestMatchers(
+                        "/health/**",
+                        "/api/members/signup",
+                        "/api/members/login",
+                        "/api/members/token/refresh")
+                    .permitAll()
+                    .requestMatchers("/api/members/admin/**")
+                    .hasRole("ADMIN")
+                    .anyRequest()
+                    .authenticated())
+        .addFilterBefore(requestIdFilter, UsernamePasswordAuthenticationFilter.class)
+        .addFilterAfter(jwtFilter, RequestIdFilter.class)
+        .build();
+  }
 
-    @Bean
-    CorsConfigurationSource cors(@Value("${app.cors-origins}") String origins) {
-        CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(Arrays.stream(origins.split(","))
-                .map(String::trim)
-                .toList());
-        configuration.setAllowedMethods(List.of("GET", "POST", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Request-ID"));
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", configuration);
-        return source;
-    }
+  @Bean
+  CorsConfigurationSource cors(@Value("${app.cors-origins}") String origins) {
+    CorsConfiguration configuration = new CorsConfiguration();
+    configuration.setAllowedOrigins(Arrays.stream(origins.split(",")).map(String::trim).toList());
+    configuration.setAllowedMethods(List.of("GET", "POST", "DELETE", "OPTIONS"));
+    configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Request-ID"));
+    configuration.setAllowCredentials(true);
+    UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+    source.registerCorsConfiguration("/**", configuration);
+    return source;
+  }
 }

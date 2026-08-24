@@ -19,64 +19,67 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
-    private final JwtService jwt;
-    private final UserRepository users;
-    private final SecurityErrorWriter errorWriter;
+  private final JwtService jwt;
+  private final UserRepository users;
+  private final SecurityErrorWriter errorWriter;
 
-    public JwtAuthenticationFilter(
-            JwtService jwt, UserRepository users, SecurityErrorWriter errorWriter) {
-        this.jwt = jwt;
-        this.users = users;
-        this.errorWriter = errorWriter;
+  public JwtAuthenticationFilter(
+      JwtService jwt, UserRepository users, SecurityErrorWriter errorWriter) {
+    this.jwt = jwt;
+    this.users = users;
+    this.errorWriter = errorWriter;
+  }
+
+  @Override
+  protected void doFilterInternal(
+      HttpServletRequest request, HttpServletResponse response, FilterChain chain)
+      throws ServletException, IOException {
+    String header = request.getHeader("Authorization");
+    if (header == null || !header.startsWith("Bearer ")) {
+      chain.doFilter(request, response);
+      return;
     }
 
-    @Override
-    protected void doFilterInternal(
-            HttpServletRequest request,
-            HttpServletResponse response,
-            FilterChain chain) throws ServletException, IOException {
-        String header = request.getHeader("Authorization");
-        if (header == null || !header.startsWith("Bearer ")) {
-            chain.doFilter(request, response);
-            return;
-        }
-
-        try {
-            Claims claims = jwt.parse(header.substring(7));
-            if (!"access".equals(claims.get("type", String.class))) {
-                writeInvalid(request, response);
-                return;
-            }
-            Long userId = Long.valueOf(claims.getSubject());
-            users.findById(userId).ifPresent(user -> {
-                var authentication = new UsernamePasswordAuthenticationToken(
+    try {
+      Claims claims = jwt.parse(header.substring(7));
+      if (!"access".equals(claims.get("type", String.class))) {
+        writeInvalid(request, response);
+        return;
+      }
+      Long userId = Long.valueOf(claims.getSubject());
+      users
+          .findById(userId)
+          .ifPresent(
+              user -> {
+                var authentication =
+                    new UsernamePasswordAuthenticationToken(
                         user,
                         null,
                         List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name())));
                 SecurityContextHolder.getContext().setAuthentication(authentication);
-            });
-        } catch (ExpiredJwtException exception) {
-            errorWriter.write(
-                    request,
-                    response,
-                    HttpServletResponse.SC_UNAUTHORIZED,
-                    "ACCESS_TOKEN_EXPIRED",
-                    "로그인이 만료되었습니다. 다시 로그인해주세요.");
-            return;
-        } catch (JwtException | IllegalArgumentException exception) {
-            writeInvalid(request, response);
-            return;
-        }
-        chain.doFilter(request, response);
+              });
+    } catch (ExpiredJwtException exception) {
+      errorWriter.write(
+          request,
+          response,
+          HttpServletResponse.SC_UNAUTHORIZED,
+          "ACCESS_TOKEN_EXPIRED",
+          "로그인이 만료되었습니다. 다시 로그인해주세요.");
+      return;
+    } catch (JwtException | IllegalArgumentException exception) {
+      writeInvalid(request, response);
+      return;
     }
+    chain.doFilter(request, response);
+  }
 
-    private void writeInvalid(HttpServletRequest request, HttpServletResponse response)
-            throws IOException {
-        errorWriter.write(
-                request,
-                response,
-                HttpServletResponse.SC_UNAUTHORIZED,
-                "ACCESS_TOKEN_INVALID",
-                "유효하지 않은 인증 정보입니다.");
-    }
+  private void writeInvalid(HttpServletRequest request, HttpServletResponse response)
+      throws IOException {
+    errorWriter.write(
+        request,
+        response,
+        HttpServletResponse.SC_UNAUTHORIZED,
+        "ACCESS_TOKEN_INVALID",
+        "유효하지 않은 인증 정보입니다.");
+  }
 }
