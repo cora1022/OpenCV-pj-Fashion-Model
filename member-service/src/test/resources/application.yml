@@ -17,4 +17,13 @@ app:
     audience: test-style-finder-api
     access-token-seconds: 900
     refresh-token-seconds: 3600
+    refresh-cookie:
+      name: style_finder_refresh
+      path: /api/members
+      same-site: Lax
+      secure: false
+      max-age-seconds: 3600
+    refresh-token-cleanup:
+      interval-ms: 3600000
+      revoked-retention-hours: 24
   cors-origins: http://localhost:5173

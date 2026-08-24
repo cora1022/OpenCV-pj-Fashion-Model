@@ -23,4 +23,13 @@ app:
     audience: ${JWT_AUDIENCE:style-finder-api}
     access-token-seconds: ${JWT_ACCESS_TOKEN_SECONDS:900}
     refresh-token-seconds: ${JWT_REFRESH_TOKEN_SECONDS:1209600}
+    refresh-cookie:
+      name: ${REFRESH_COOKIE_NAME:style_finder_refresh}
+      path: ${REFRESH_COOKIE_PATH:/api/members}
+      same-site: ${REFRESH_COOKIE_SAME_SITE:Lax}
+      secure: ${REFRESH_COOKIE_SECURE:false}
+      max-age-seconds: ${REFRESH_COOKIE_MAX_AGE_SECONDS:1209600}
+    refresh-token-cleanup:
+      interval-ms: ${REFRESH_TOKEN_CLEANUP_INTERVAL_MS:3600000}
+      revoked-retention-hours: ${REFRESH_TOKEN_REVOKED_RETENTION_HOURS:24}
   cors-origins: ${MEMBER_CORS_ORIGINS:http://localhost,http://localhost:5173}
