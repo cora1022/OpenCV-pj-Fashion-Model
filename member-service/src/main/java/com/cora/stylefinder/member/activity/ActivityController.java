@@ -1,11 +1,75 @@
 package com.cora.stylefinder.member.activity;
-import com.cora.stylefinder.member.common.ApiException; import com.cora.stylefinder.member.member.User; import jakarta.validation.Valid; import jakarta.validation.constraints.*; import java.util.*; import org.springframework.http.*; import org.springframework.security.core.annotation.AuthenticationPrincipal; import org.springframework.web.bind.annotation.*;
-@RestController @RequestMapping("/api/members") public class ActivityController { private final SearchHistoryRepository histories; private final SavedResultRepository saved; public ActivityController(SearchHistoryRepository h,SavedResultRepository s){histories=h;saved=s;}
- @GetMapping("/search-histories") List<Map<String,Object>> histories(@AuthenticationPrincipal User u){return histories.findByUserOrderBySearchedAtDesc(u).stream().map(x->Map.<String,Object>of("id",x.getId())).toList();}
- @PostMapping("/search-histories") ResponseEntity<Void> addHistory(@AuthenticationPrincipal User u,@RequestBody HistoryRequest r){histories.save(new SearchHistory(u,r.searchType(),r.cropMode()));return ResponseEntity.status(HttpStatus.CREATED).build();}
- @DeleteMapping("/search-histories/{id}") ResponseEntity<Void> removeHistory(@AuthenticationPrincipal User u,@PathVariable Long id){SearchHistory x=histories.findById(id).orElseThrow(()->new ApiException("SEARCH_HISTORY_NOT_FOUND","검색 기록을 찾을 수 없습니다.",HttpStatus.NOT_FOUND)); if(x.user!=u)throw new ApiException("FORBIDDEN","권한이 없습니다.",HttpStatus.FORBIDDEN); histories.delete(x);return ResponseEntity.noContent().build();}
- @GetMapping("/saved-results") List<Map<String,Object>> saved(@AuthenticationPrincipal User u){return saved.findByUserOrderByIdDesc(u).stream().map(x->Map.<String,Object>of("id",x.getId())).toList();}
- @PostMapping("/saved-results") ResponseEntity<Void> addSaved(@AuthenticationPrincipal User u,@Valid @RequestBody SavedRequest r){if(saved.existsByUserAndCatalogItemId(u,r.catalogItemId()))throw new ApiException("DUPLICATE_SAVED_RESULT","이미 저장한 결과입니다.",HttpStatus.CONFLICT);saved.save(new SavedResult(u,r.catalogItemId(),r.title(),r.imageUrl(),r.sourceUrl(),r.similarityScore(),r.modelVersion(),r.metadata().toString()));return ResponseEntity.status(HttpStatus.CREATED).build();}
- @DeleteMapping("/saved-results/{id}") ResponseEntity<Void> removeSaved(@AuthenticationPrincipal User u,@PathVariable Long id){SavedResult x=saved.findById(id).orElseThrow(()->new ApiException("SAVED_RESULT_NOT_FOUND","저장한 결과를 찾을 수 없습니다.",HttpStatus.NOT_FOUND));if(x.user!=u)throw new ApiException("FORBIDDEN","권한이 없습니다.",HttpStatus.FORBIDDEN);saved.delete(x);return ResponseEntity.noContent().build();}
- record HistoryRequest(String searchType,String cropMode){} record SavedRequest(@NotBlank String catalogItemId,@NotBlank String title,@NotBlank String imageUrl,String sourceUrl,double similarityScore,@NotBlank String modelVersion,Map<String,Object> metadata){}
+
+import com.cora.stylefinder.member.activity.dto.CreateSavedResultRequest;
+import com.cora.stylefinder.member.activity.dto.CreateSearchHistoryRequest;
+import com.cora.stylefinder.member.activity.dto.PageResponse;
+import com.cora.stylefinder.member.activity.dto.SavedResultResponse;
+import com.cora.stylefinder.member.activity.dto.SearchHistoryResponse;
+import com.cora.stylefinder.member.member.User;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@Validated
+@RestController
+@RequestMapping("/api/members")
+public class ActivityController {
+  private final ActivityService activity;
+
+  public ActivityController(ActivityService activity) {
+    this.activity = activity;
+  }
+
+  @GetMapping("/search-histories")
+  PageResponse<SearchHistoryResponse> histories(
+      @AuthenticationPrincipal User user,
+      @RequestParam(defaultValue = "0") @Min(0) int page,
+      @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+    return activity.histories(user.getId(), page, size);
+  }
+
+  @PostMapping("/search-histories")
+  ResponseEntity<SearchHistoryResponse> addHistory(
+      @AuthenticationPrincipal User user, @Valid @RequestBody CreateSearchHistoryRequest request) {
+    return ResponseEntity.status(HttpStatus.CREATED).body(activity.addHistory(user, request));
+  }
+
+  @DeleteMapping("/search-histories/{id}")
+  ResponseEntity<Void> removeHistory(@AuthenticationPrincipal User user, @PathVariable Long id) {
+    activity.removeHistory(user.getId(), id);
+    return ResponseEntity.noContent().build();
+  }
+
+  @GetMapping("/saved-results")
+  PageResponse<SavedResultResponse> savedResults(
+      @AuthenticationPrincipal User user,
+      @RequestParam(defaultValue = "0") @Min(0) int page,
+      @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+    return activity.savedResults(user.getId(), page, size);
+  }
+
+  @PostMapping("/saved-results")
+  ResponseEntity<SavedResultResponse> addSavedResult(
+      @AuthenticationPrincipal User user, @Valid @RequestBody CreateSavedResultRequest request) {
+    return ResponseEntity.status(HttpStatus.CREATED).body(activity.addSavedResult(user, request));
+  }
+
+  @DeleteMapping("/saved-results/{id}")
+  ResponseEntity<Void> removeSavedResult(
+      @AuthenticationPrincipal User user, @PathVariable Long id) {
+    activity.removeSavedResult(user.getId(), id);
+    return ResponseEntity.noContent().build();
+  }
 }
