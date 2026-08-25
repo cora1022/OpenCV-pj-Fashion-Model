@@ -24,6 +24,6 @@ app:
       secure: false
       max-age-seconds: 3600
     refresh-token-cleanup:
-      interval-ms: 3600000
+      interval-ms: 86400000
       revoked-retention-hours: 24
   cors-origins: http://localhost:5173

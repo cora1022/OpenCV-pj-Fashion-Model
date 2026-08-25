@@ -1,19 +1,33 @@
 package com.cora.stylefinder.member;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.cora.stylefinder.member.activity.SavedResultRepository;
+import com.cora.stylefinder.member.activity.SearchHistoryRepository;
 import com.cora.stylefinder.member.auth.RefreshTokenRepository;
 import com.cora.stylefinder.member.member.UserRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.jsonwebtoken.Jwts;
+import jakarta.servlet.http.Cookie;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
+import java.security.PrivateKey;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.time.Instant;
 import java.util.Base64;
+import java.util.Date;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,120 +44,438 @@ import org.springframework.web.bind.annotation.RestController;
 @SpringBootTest(classes = {MemberServiceApplication.class, MemberApiIntegrationTest.AdminApi.class})
 @AutoConfigureMockMvc
 class MemberApiIntegrationTest {
-    private static final KeyPaths KEY_PATHS = createKeys();
+  private static final KeyPaths KEY_PATHS = createKeys();
 
-    @Autowired MockMvc mockMvc;
-    @Autowired ObjectMapper objectMapper;
-    @Autowired UserRepository users;
-    @Autowired RefreshTokenRepository refreshTokens;
+  @Autowired MockMvc mockMvc;
+  @Autowired ObjectMapper objectMapper;
+  @Autowired UserRepository users;
+  @Autowired RefreshTokenRepository refreshTokens;
+  @Autowired SearchHistoryRepository histories;
+  @Autowired SavedResultRepository savedResults;
 
-    @DynamicPropertySource
-    static void jwtProperties(DynamicPropertyRegistry registry) {
-        registry.add("app.security.private-key-path", () -> KEY_PATHS.privateKey().toString());
-        registry.add("app.security.public-key-path", () -> KEY_PATHS.publicKey().toString());
-    }
+  @DynamicPropertySource
+  static void jwtProperties(DynamicPropertyRegistry registry) {
+    registry.add("app.security.private-key-path", () -> KEY_PATHS.privateKey().toString());
+    registry.add("app.security.public-key-path", () -> KEY_PATHS.publicKey().toString());
+  }
 
-    @BeforeEach
-    void cleanDatabase() {
-        refreshTokens.deleteAll();
-        users.deleteAll();
-    }
+  @BeforeEach
+  void cleanDatabase() {
+    savedResults.deleteAll();
+    histories.deleteAll();
+    refreshTokens.deleteAll();
+    users.deleteAll();
+  }
 
-    @Test
-    void unauthenticatedMemberRequestReturnsJson401() throws Exception {
-        mockMvc.perform(get("/api/members/me"))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.error.code").value("AUTHENTICATION_REQUIRED"))
-                .andExpect(jsonPath("$.error.requestId").isNotEmpty());
-    }
+  @Test
+  void unauthenticatedMemberRequestReturnsJson401() throws Exception {
+    mockMvc
+        .perform(get("/api/members/me"))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.error.code").value("AUTHENTICATION_REQUIRED"))
+        .andExpect(jsonPath("$.error.requestId").isNotEmpty());
+  }
 
-    @Test
-    void signupNormalizesEmailAndRejectsCaseInsensitiveDuplicate() throws Exception {
-        signup("Member@Example.com").andExpect(status().isCreated());
+  @Test
+  void readinessChecksDatabaseAndAppliedFlywayMigrations() throws Exception {
+    mockMvc
+        .perform(get("/health/live"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("live"));
+    mockMvc
+        .perform(get("/health/ready"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("ready"))
+        .andExpect(jsonPath("$.checks.database").value(true))
+        .andExpect(jsonPath("$.checks.flyway").value(true));
+  }
 
-        signup("member@example.COM")
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error.code").value("EMAIL_ALREADY_EXISTS"));
-    }
+  @Test
+  void signupNormalizesEmailAndRejectsCaseInsensitiveDuplicate() throws Exception {
+    signup("Member@Example.com").andExpect(status().isCreated());
 
-    @Test
-    void loginAccessTokenAuthenticatesMember() throws Exception {
-        signup("member@example.com").andExpect(status().isCreated());
-        String accessToken = login("member@example.com");
+    signup("member@example.COM")
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.error.code").value("EMAIL_ALREADY_EXISTS"));
+  }
 
-        mockMvc.perform(get("/api/members/me").header("Authorization", "Bearer " + accessToken))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.email").value("member@example.com"));
-    }
+  @Test
+  void signupStoresBcryptHashInsteadOfRawPassword() throws Exception {
+    signup("member@example.com").andExpect(status().isCreated());
 
-    @Test
-    void invalidAccessTokenReturnsJson401() throws Exception {
-        mockMvc.perform(get("/api/members/me").header("Authorization", "Bearer invalid-token"))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.error.code").value("ACCESS_TOKEN_INVALID"));
-    }
+    String passwordHash = users.findByEmail("member@example.com").orElseThrow().getPasswordHash();
 
-    @Test
-    void userRoleCannotAccessAdminEndpoint() throws Exception {
-        signup("member@example.com").andExpect(status().isCreated());
-        String accessToken = login("member@example.com");
+    assertNotEquals("password123", passwordHash);
+    assertTrue(passwordHash.startsWith("$2"));
+  }
 
-        mockMvc.perform(get("/api/members/admin/ping")
-                        .header("Authorization", "Bearer " + accessToken))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
-    }
+  @Test
+  void loginRejectsWrongPasswordWithStableError() throws Exception {
+    signup("member@example.com").andExpect(status().isCreated());
 
-    private org.springframework.test.web.servlet.ResultActions signup(String email) throws Exception {
-        return mockMvc.perform(post("/api/members/signup")
+    mockMvc
+        .perform(
+            post("/api/members/login")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(
-                        new SignupPayload(email, "password123", "테스트 사용자"))));
+                .content(
+                    objectMapper.writeValueAsString(
+                        new LoginPayload("member@example.com", "wrong-password"))))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.error.code").value("INVALID_CREDENTIALS"));
+  }
+
+  @Test
+  void loginAccessTokenAuthenticatesMember() throws Exception {
+    signup("member@example.com").andExpect(status().isCreated());
+    String accessToken = login("member@example.com");
+
+    mockMvc
+        .perform(get("/api/members/me").header("Authorization", "Bearer " + accessToken))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.email").value("member@example.com"));
+  }
+
+  @Test
+  void loginStoresRefreshTokenOnlyInConfiguredHttpOnlyCookie() throws Exception {
+    signup("member@example.com").andExpect(status().isCreated());
+
+    MvcResult result = loginResult("member@example.com");
+    Cookie cookie = result.getResponse().getCookie("style_finder_refresh");
+
+    assertNotNull(cookie);
+    assertTrue(cookie.isHttpOnly());
+    assertFalse(cookie.getSecure());
+    assertTrue("/api/members".equals(cookie.getPath()));
+    assertTrue(cookie.getMaxAge() == 3600);
+    assertTrue(result.getResponse().getHeader("Set-Cookie").contains("SameSite=Lax"));
+    assertFalse(
+        objectMapper.readTree(result.getResponse().getContentAsString()).has("refreshToken"));
+  }
+
+  @Test
+  void refreshRotatesTokenAndRejectsPreviousCookie() throws Exception {
+    signup("member@example.com").andExpect(status().isCreated());
+    MvcResult login = loginResult("member@example.com");
+    Cookie previous = login.getResponse().getCookie("style_finder_refresh");
+
+    MvcResult refreshed =
+        mockMvc
+            .perform(post("/api/members/token/refresh").cookie(previous))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.accessToken").isNotEmpty())
+            .andReturn();
+    Cookie rotated = refreshed.getResponse().getCookie("style_finder_refresh");
+
+    assertNotNull(rotated);
+    assertNotEquals(previous.getValue(), rotated.getValue());
+    mockMvc
+        .perform(post("/api/members/token/refresh").cookie(previous))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.error.code").value("REFRESH_TOKEN_INVALID"));
+  }
+
+  @Test
+  void expiredRefreshCookieReturnsDedicatedError() throws Exception {
+    signup("member@example.com").andExpect(status().isCreated());
+    Cookie refreshCookie = new Cookie("style_finder_refresh", expiredRefreshToken());
+
+    mockMvc
+        .perform(post("/api/members/token/refresh").cookie(refreshCookie))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.error.code").value("REFRESH_TOKEN_EXPIRED"));
+  }
+
+  private String expiredRefreshToken() throws Exception {
+    String pem = Files.readString(KEY_PATHS.privateKey());
+    String encoded =
+        pem.replace("-----BEGIN PRIVATE KEY-----", "")
+            .replace("-----END PRIVATE KEY-----", "")
+            .replaceAll("\\s", "");
+    PrivateKey privateKey =
+        KeyFactory.getInstance("RSA")
+            .generatePrivate(new PKCS8EncodedKeySpec(Base64.getDecoder().decode(encoded)));
+    Instant now = Instant.now();
+    return Jwts.builder()
+        .subject("1")
+        .issuer("test-member-service")
+        .audience()
+        .add("test-style-finder-api")
+        .and()
+        .claim("type", "refresh")
+        .issuedAt(Date.from(now.minusSeconds(120)))
+        .expiration(Date.from(now.minusSeconds(60)))
+        .signWith(privateKey, Jwts.SIG.RS256)
+        .compact();
+  }
+
+  @Test
+  void logoutRevokesRefreshTokenAndClearsCookie() throws Exception {
+    signup("member@example.com").andExpect(status().isCreated());
+    MvcResult login = loginResult("member@example.com");
+    Cookie refreshCookie = login.getResponse().getCookie("style_finder_refresh");
+    String accessToken =
+        objectMapper.readTree(login.getResponse().getContentAsString()).get("accessToken").asText();
+
+    MvcResult logout =
+        mockMvc
+            .perform(
+                post("/api/members/logout")
+                    .header("Authorization", "Bearer " + accessToken)
+                    .cookie(refreshCookie))
+            .andExpect(status().isNoContent())
+            .andReturn();
+    Cookie cleared = logout.getResponse().getCookie("style_finder_refresh");
+
+    assertNotNull(cleared);
+    assertTrue(cleared.getMaxAge() == 0);
+    mockMvc
+        .perform(post("/api/members/token/refresh").cookie(refreshCookie))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.error.code").value("REFRESH_TOKEN_INVALID"));
+  }
+
+  @Test
+  void invalidAccessTokenReturnsJson401() throws Exception {
+    mockMvc
+        .perform(get("/api/members/me").header("Authorization", "Bearer invalid-token"))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.error.code").value("ACCESS_TOKEN_INVALID"));
+  }
+
+  @Test
+  void userRoleCannotAccessAdminEndpoint() throws Exception {
+    signup("member@example.com").andExpect(status().isCreated());
+    String accessToken = login("member@example.com");
+
+    mockMvc
+        .perform(get("/api/members/admin/ping").header("Authorization", "Bearer " + accessToken))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
+  }
+
+  @Test
+  void searchHistorySupportsValidatedCreatePaginationAndDelete() throws Exception {
+    signup("member@example.com").andExpect(status().isCreated());
+    String accessToken = login("member@example.com");
+
+    MvcResult created =
+        mockMvc
+            .perform(
+                post("/api/members/search-histories")
+                    .header("Authorization", "Bearer " + accessToken)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                                {"searchType":"IMAGE_UPLOAD","cropMode":"AUTO"}
+                                """))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.searchType").value("IMAGE_UPLOAD"))
+            .andExpect(jsonPath("$.cropMode").value("AUTO"))
+            .andExpect(jsonPath("$.searchedAt").isNotEmpty())
+            .andReturn();
+    long historyId =
+        objectMapper.readTree(created.getResponse().getContentAsString()).get("id").asLong();
+
+    mockMvc
+        .perform(
+            get("/api/members/search-histories?page=0&size=1")
+                .header("Authorization", "Bearer " + accessToken))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items[0].id").value(historyId))
+        .andExpect(jsonPath("$.totalElements").value(1))
+        .andExpect(jsonPath("$.size").value(1));
+
+    mockMvc
+        .perform(
+            delete("/api/members/search-histories/{id}", historyId)
+                .header("Authorization", "Bearer " + accessToken))
+        .andExpect(status().isNoContent());
+  }
+
+  @Test
+  void savedResultRoundTripsJsonMetadataAndRejectsDuplicate() throws Exception {
+    signup("member@example.com").andExpect(status().isCreated());
+    String accessToken = login("member@example.com");
+
+    MvcResult created =
+        createSavedResult(accessToken, "shirt-blue-001")
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.catalogItemId").value("shirt-blue-001"))
+            .andExpect(jsonPath("$.metadata.category").value("shirt"))
+            .andExpect(jsonPath("$.metadata.colors[0]").value("blue"))
+            .andExpect(jsonPath("$.metadata.styleTags[0]").value("minimal"))
+            .andExpect(jsonPath("$.createdAt").isNotEmpty())
+            .andReturn();
+    long savedId =
+        objectMapper.readTree(created.getResponse().getContentAsString()).get("id").asLong();
+
+    createSavedResult(accessToken, "shirt-blue-001")
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.error.code").value("DUPLICATE_SAVED_RESULT"));
+    mockMvc
+        .perform(
+            get("/api/members/saved-results?page=0&size=20")
+                .header("Authorization", "Bearer " + accessToken))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items[0].metadata.category").value("shirt"))
+        .andExpect(jsonPath("$.totalElements").value(1));
+    mockMvc
+        .perform(
+            delete("/api/members/saved-results/{id}", savedId)
+                .header("Authorization", "Bearer " + accessToken))
+        .andExpect(status().isNoContent());
+  }
+
+  @Test
+  void activityOwnershipIsolatedByAuthenticatedUser() throws Exception {
+    signup("owner@example.com").andExpect(status().isCreated());
+    String ownerToken = login("owner@example.com");
+    MvcResult history =
+        mockMvc
+            .perform(
+                post("/api/members/search-histories")
+                    .header("Authorization", "Bearer " + ownerToken)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"searchType\":\"CATALOG_ITEM\",\"cropMode\":\"CATALOG\"}"))
+            .andExpect(status().isCreated())
+            .andReturn();
+    long historyId =
+        objectMapper.readTree(history.getResponse().getContentAsString()).get("id").asLong();
+    MvcResult saved =
+        createSavedResult(ownerToken, "owner-item").andExpect(status().isCreated()).andReturn();
+    long savedId =
+        objectMapper.readTree(saved.getResponse().getContentAsString()).get("id").asLong();
+
+    signup("other@example.com").andExpect(status().isCreated());
+    String otherToken = login("other@example.com");
+
+    mockMvc
+        .perform(
+            get("/api/members/search-histories").header("Authorization", "Bearer " + otherToken))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.totalElements").value(0));
+    mockMvc
+        .perform(get("/api/members/saved-results").header("Authorization", "Bearer " + otherToken))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.totalElements").value(0));
+    mockMvc
+        .perform(
+            delete("/api/members/search-histories/{id}", historyId)
+                .header("Authorization", "Bearer " + otherToken))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.error.code").value("SEARCH_HISTORY_NOT_FOUND"));
+    mockMvc
+        .perform(
+            delete("/api/members/saved-results/{id}", savedId)
+                .header("Authorization", "Bearer " + otherToken))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.error.code").value("SAVED_RESULT_NOT_FOUND"));
+  }
+
+  @Test
+  void savedResultValidatesSimilarityRange() throws Exception {
+    signup("member@example.com").andExpect(status().isCreated());
+    String accessToken = login("member@example.com");
+
+    mockMvc
+        .perform(
+            post("/api/members/saved-results")
+                .header("Authorization", "Bearer " + accessToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(savedResultJson("invalid-score", 1.1)))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+  }
+
+  private org.springframework.test.web.servlet.ResultActions signup(String email) throws Exception {
+    return mockMvc.perform(
+        post("/api/members/signup")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(
+                objectMapper.writeValueAsString(
+                    new SignupPayload(email, "password123", "테스트 사용자"))));
+  }
+
+  private String login(String email) throws Exception {
+    MvcResult result = loginResult(email);
+    JsonNode response = objectMapper.readTree(result.getResponse().getContentAsString());
+    return response.get("accessToken").asText();
+  }
+
+  private MvcResult loginResult(String email) throws Exception {
+    return mockMvc
+        .perform(
+            post("/api/members/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new LoginPayload(email, "password123"))))
+        .andExpect(status().isOk())
+        .andReturn();
+  }
+
+  private org.springframework.test.web.servlet.ResultActions createSavedResult(
+      String accessToken, String catalogItemId) throws Exception {
+    return mockMvc.perform(
+        post("/api/members/saved-results")
+            .header("Authorization", "Bearer " + accessToken)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(savedResultJson(catalogItemId, 0.91)));
+  }
+
+  private String savedResultJson(String catalogItemId, double score) throws Exception {
+    return objectMapper.writeValueAsString(
+        new SavedPayload(
+            catalogItemId,
+            "파란 셔츠",
+            "/api/catalog/items/" + catalogItemId + "/image",
+            null,
+            score,
+            new MetadataPayload("shirt", new String[] {"blue"}, new String[] {"minimal"}),
+            "fashion-clip@test"));
+  }
+
+  private static String pem(String type, byte[] encoded) {
+    String body = Base64.getMimeEncoder(64, new byte[] {'\n'}).encodeToString(encoded);
+    return "-----BEGIN " + type + "-----\n" + body + "\n-----END " + type + "-----\n";
+  }
+
+  private static KeyPaths createKeys() {
+    try {
+      Path directory = Files.createTempDirectory("style-finder-jwt-test");
+      Path privateKey = directory.resolve("private.pem");
+      Path publicKey = directory.resolve("public.pem");
+      KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+      generator.initialize(2048);
+      KeyPair keyPair = generator.generateKeyPair();
+      Files.writeString(privateKey, pem("PRIVATE KEY", keyPair.getPrivate().getEncoded()));
+      Files.writeString(publicKey, pem("PUBLIC KEY", keyPair.getPublic().getEncoded()));
+      return new KeyPaths(privateKey, publicKey);
+    } catch (Exception exception) {
+      throw new IllegalStateException("Could not create test JWT keys", exception);
     }
+  }
 
-    private String login(String email) throws Exception {
-        MvcResult result = mockMvc.perform(post("/api/members/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(
-                                new LoginPayload(email, "password123"))))
-                .andExpect(status().isOk())
-                .andReturn();
-        JsonNode response = objectMapper.readTree(result.getResponse().getContentAsString());
-        return response.get("accessToken").asText();
+  record SignupPayload(String email, String password, String displayName) {}
+
+  record LoginPayload(String email, String password) {}
+
+  record SavedPayload(
+      String catalogItemId,
+      String title,
+      String imageUrl,
+      String sourceUrl,
+      double similarityScore,
+      MetadataPayload metadata,
+      String modelVersion) {}
+
+  record MetadataPayload(String category, String[] colors, String[] styleTags) {}
+
+  record KeyPaths(Path privateKey, Path publicKey) {}
+
+  @RestController
+  static class AdminApi {
+    @GetMapping("/api/members/admin/ping")
+    String ping() {
+      return "ok";
     }
-
-    private static String pem(String type, byte[] encoded) {
-        String body = Base64.getMimeEncoder(64, new byte[] {'\n'}).encodeToString(encoded);
-        return "-----BEGIN " + type + "-----\n" + body + "\n-----END " + type + "-----\n";
-    }
-
-    private static KeyPaths createKeys() {
-        try {
-            Path directory = Files.createTempDirectory("style-finder-jwt-test");
-            Path privateKey = directory.resolve("private.pem");
-            Path publicKey = directory.resolve("public.pem");
-            KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
-            generator.initialize(2048);
-            KeyPair keyPair = generator.generateKeyPair();
-            Files.writeString(privateKey, pem("PRIVATE KEY", keyPair.getPrivate().getEncoded()));
-            Files.writeString(publicKey, pem("PUBLIC KEY", keyPair.getPublic().getEncoded()));
-            return new KeyPaths(privateKey, publicKey);
-        } catch (Exception exception) {
-            throw new IllegalStateException("Could not create test JWT keys", exception);
-        }
-    }
-
-    record SignupPayload(String email, String password, String displayName) {}
-
-    record LoginPayload(String email, String password) {}
-
-    record KeyPaths(Path privateKey, Path publicKey) {}
-
-    @RestController
-    static class AdminApi {
-        @GetMapping("/api/members/admin/ping")
-        String ping() {
-            return "ok";
-        }
-    }
+  }
 }
