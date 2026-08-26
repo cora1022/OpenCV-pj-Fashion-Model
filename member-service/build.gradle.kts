@@ -2,6 +2,7 @@ plugins {
     java
     id("org.springframework.boot") version "3.5.3"
     id("io.spring.dependency-management") version "1.1.7"
+    id("com.diffplug.spotless") version "7.2.1"
 }
 
 group = "com.cora.stylefinder"
@@ -24,6 +25,41 @@ dependencies {
     testRuntimeOnly("com.h2database:h2")
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.security:spring-security-test")
+    testImplementation("org.testcontainers:junit-jupiter")
+    testImplementation("org.testcontainers:mysql")
 }
 
 tasks.withType<Test> { useJUnitPlatform() }
+
+spotless {
+    java {
+        googleJavaFormat("1.28.0")
+        removeUnusedImports()
+        trimTrailingWhitespace()
+        endWithNewline()
+    }
+}
+
+val noWildcardImports by tasks.registering {
+    val javaSources = fileTree("src") { include("**/*.java") }
+    inputs.files(javaSources)
+    doLast {
+        val offenders =
+            javaSources.files.filter { file ->
+                file.readLines().any { line ->
+                    line.trim().matches(Regex("import\\s+(static\\s+)?[^;]+\\.\\*;"))
+                }
+            }
+        if (offenders.isNotEmpty()) {
+            throw GradleException(
+                "Wildcard imports are not allowed:\n" +
+                    offenders.joinToString("\n") { it.relativeTo(projectDir).path }
+            )
+        }
+    }
+}
+
+tasks.named("check") {
+    dependsOn("spotlessCheck")
+    dependsOn(noWildcardImports)
+}
