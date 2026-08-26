@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { login, signup, type Member } from '../api/members'
+import { login, memberErrorMessage, signup, type Member } from '../api/members'
 
 type AuthScreenProps = {
   initialMode: 'login' | 'signup'
@@ -33,8 +33,11 @@ export function AuthScreen({ initialMode, onClose, onDone }: AuthScreenProps) {
         return
       }
       onDone(await login(email, password))
-    } catch {
-      setMessage(isSignup ? '입력한 회원 정보를 확인해주세요.' : '이메일 또는 비밀번호를 확인해주세요.')
+    } catch (error) {
+      setMessage(memberErrorMessage(
+        error,
+        isSignup ? '입력한 회원 정보를 확인해주세요.' : '이메일 또는 비밀번호를 확인해주세요.',
+      ))
     } finally {
       setIsSubmitting(false)
     }

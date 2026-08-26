@@ -1,16 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { cropImage, searchCatalogItem, searchImage, type CropBox, type SearchResult } from '../api/search'
+import { ActivityApiError, createSavedResult, createSearchHistory } from '../api/activity'
 import { validateImageFile } from '../utils/imageValidation'
 import { ResultGrid } from './ResultGrid'
 import { SearchLoadingOverlay } from './SearchLoadingOverlay'
 import { UploadPanel } from './UploadPanel'
 
-type Props = { onBack: () => void }
+type Props = {
+  onBack: () => void
+  onMyPage: () => void
+  initialCatalogItemId?: string | null
+  onInitialCatalogConsumed?: () => void
+}
 type AutoCropMeta = { cropApplied: boolean; cropBox: CropBox | null; originalSize: string | null; cropSize: string | null; detector: string | null }
 
-export function SearchScreen({ onBack }: Props) {
+export function SearchScreen({ onBack, onMyPage, initialCatalogItemId, onInitialCatalogConsumed }: Props) {
   const originalUrl = useRef<string | null>(null)
   const searchUrl = useRef<string | null>(null)
+  const initialSearchStarted = useRef<string | null>(null)
   const [originalFile, setOriginalFile] = useState<File | null>(null)
   const [searchFile, setSearchFile] = useState<File | null>(null)
   const [originalPreviewUrl, setOriginalPreviewUrl] = useState<string | null>(null)
@@ -26,6 +33,8 @@ export function SearchScreen({ onBack }: Props) {
   const [activeStep, setActiveStep] = useState<1 | 2>(1)
   const [resultRevealKey, setResultRevealKey] = useState(0)
   const [uploadRevealKey, setUploadRevealKey] = useState(0)
+  const [saveStates, setSaveStates] = useState<Record<string, 'saving' | 'saved' | 'duplicate' | 'error'>>({})
+  const [activityMessage, setActivityMessage] = useState<string | null>(null)
 
   const releaseUrls = useCallback(() => {
     if (originalUrl.current) URL.revokeObjectURL(originalUrl.current)
@@ -63,7 +72,15 @@ export function SearchScreen({ onBack }: Props) {
   const handleSearch = async () => {
     if (!searchFile) return setErrorMessage('검색 전에 크롭 영역을 먼저 확정해주세요.')
     setIsLoading(true); setErrorMessage(null)
-    try { const response = await searchImage(searchFile); setResults(response.results); setRequestedTopK(2); setActiveStep(2); setResultRevealKey((value) => value + 1) } catch (error) { setResults([]); setErrorMessage(error instanceof Error ? error.message : '이미지 검색 중 오류가 발생했습니다.') } finally { setIsLoading(false) }
+    try {
+      const response = await searchImage(searchFile)
+      setResults(response.results); setRequestedTopK(2); setActiveStep(2); setResultRevealKey((value) => value + 1)
+      try {
+        await createSearchHistory('IMAGE_UPLOAD', cropMode === 'auto' ? 'AUTO' : 'MANUAL')
+      } catch {
+        setActivityMessage('검색은 완료됐지만 검색 기록을 저장하지 못했습니다.')
+      }
+    } catch (error) { setResults([]); setErrorMessage(error instanceof Error ? error.message : '이미지 검색 중 오류가 발생했습니다.') } finally { setIsLoading(false) }
   }
   const handleFindMore = async () => {
     if (!searchFile) return
@@ -72,8 +89,47 @@ export function SearchScreen({ onBack }: Props) {
   }
   const handleFindSimilarResult = async (item: SearchResult) => {
     setIsLoading(true); setErrorMessage(null); setActiveStep(2)
-    try { const response = await searchCatalogItem(item.catalogItemId); setResults(response.results); setRequestedTopK(2); setResultRevealKey((value) => value + 1) } catch (error) { setErrorMessage(error instanceof Error ? error.message : '유사 이미지 검색 중 오류가 발생했습니다.') } finally { setIsLoading(false) }
+    try {
+      const response = await searchCatalogItem(item.catalogItemId)
+      setResults(response.results); setRequestedTopK(2); setResultRevealKey((value) => value + 1)
+      try { await createSearchHistory('CATALOG_ITEM', 'CATALOG') } catch { setActivityMessage('검색 기록을 저장하지 못했습니다.') }
+    } catch (error) { setErrorMessage(error instanceof Error ? error.message : '유사 이미지 검색 중 오류가 발생했습니다.') } finally { setIsLoading(false) }
   }
+
+  const handleSaveResult = async (item: SearchResult) => {
+    setSaveStates((current) => ({ ...current, [item.catalogItemId]: 'saving' }))
+    setActivityMessage(null)
+    try {
+      await createSavedResult(item)
+      setSaveStates((current) => ({ ...current, [item.catalogItemId]: 'saved' }))
+    } catch (error) {
+      const state = error instanceof ActivityApiError && error.code === 'DUPLICATE_SAVED_RESULT'
+        ? 'duplicate'
+        : 'error'
+      setSaveStates((current) => ({ ...current, [item.catalogItemId]: state }))
+      if (state === 'error') setActivityMessage('결과를 저장하지 못했습니다. 잠시 후 다시 시도해주세요.')
+    }
+  }
+
+  useEffect(() => {
+    if (!initialCatalogItemId || initialSearchStarted.current === initialCatalogItemId) return
+    initialSearchStarted.current = initialCatalogItemId
+    setIsLoading(true)
+    setActiveStep(2)
+    setErrorMessage(null)
+    searchCatalogItem(initialCatalogItemId)
+      .then(async (response) => {
+        setResults(response.results)
+        setRequestedTopK(2)
+        setResultRevealKey((value) => value + 1)
+        try { await createSearchHistory('CATALOG_ITEM', 'CATALOG') } catch { setActivityMessage('검색 기록을 저장하지 못했습니다.') }
+      })
+      .catch((error) => setErrorMessage(error instanceof Error ? error.message : '저장 이미지 재검색에 실패했습니다.'))
+      .finally(() => {
+        setIsLoading(false)
+        onInitialCatalogConsumed?.()
+      })
+  }, [initialCatalogItemId, onInitialCatalogConsumed])
 
   return (
     <main className="search-screen editorial-search">
@@ -82,9 +138,12 @@ export function SearchScreen({ onBack }: Props) {
           STYLE FINDER
         </button>
         <p>IMAGE SEARCH</p>
-        <button className="search-home-link" type="button" onClick={onBack}>
-          메인으로 <span aria-hidden="true">↗</span>
-        </button>
+        <div className="search-nav-actions">
+          <button className="search-my-page-link" type="button" onClick={onMyPage}>마이페이지</button>
+          <button className="search-home-link" type="button" onClick={onBack}>
+            메인으로 <span aria-hidden="true">↗</span>
+          </button>
+        </div>
       </header>
 
       <section className="search-workspace-heading">
@@ -115,8 +174,9 @@ export function SearchScreen({ onBack }: Props) {
               <div><p className="eyebrow">RESULT · {String(results.length).padStart(2, '0')}</p><h2>비슷한 이미지</h2></div>
               <button className="secondary-button" type="button" onClick={() => setActiveStep(1)}>다른 사진 선택</button>
             </div>
-            <ResultGrid results={results} isLoading={isLoading} isLoadingMore={isLoadingMore} revealKey={resultRevealKey} onFindMore={handleFindMore} onFindSimilarResult={handleFindSimilarResult} />
+            <ResultGrid results={results} isLoading={isLoading} isLoadingMore={isLoadingMore} revealKey={resultRevealKey} saveStates={saveStates} onFindMore={handleFindMore} onFindSimilarResult={handleFindSimilarResult} onSaveResult={handleSaveResult} />
             {errorMessage && <p className="error-message">{errorMessage}</p>}
+            {activityMessage && <p className="activity-message" role="status">{activityMessage}</p>}
           </div>
         )}
       </section>

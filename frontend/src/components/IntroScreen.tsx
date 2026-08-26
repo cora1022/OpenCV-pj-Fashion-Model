@@ -5,6 +5,7 @@ type IntroScreenProps = {
   onStart: () => void
   onLogin: () => void
   onSignup: () => void
+  onMyPage: () => void
   onLogout: () => void
 }
 
@@ -26,7 +27,7 @@ const discoverySteps = [
   },
 ]
 
-export function IntroScreen({ member, onStart, onLogin, onSignup, onLogout }: IntroScreenProps) {
+export function IntroScreen({ member, onStart, onLogin, onSignup, onMyPage, onLogout }: IntroScreenProps) {
   return (
     <main className="fashion-home">
       <header className="fashion-nav">
@@ -50,6 +51,7 @@ export function IntroScreen({ member, onStart, onLogin, onSignup, onLogout }: In
           {member ? (
             <>
               <span>{member.displayName}님</span>
+              <button type="button" className="fashion-auth-link" onClick={onMyPage}>마이페이지</button>
               <button type="button" className="fashion-auth-link" onClick={onLogout}>로그아웃</button>
             </>
           ) : (
