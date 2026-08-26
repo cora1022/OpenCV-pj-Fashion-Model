@@ -5,11 +5,13 @@ type ResultGridProps = {
   isLoading: boolean
   isLoadingMore: boolean
   revealKey: number
+  saveStates?: Record<string, 'saving' | 'saved' | 'duplicate' | 'error'>
   onFindMore: () => void
   onFindSimilarResult: (item: SearchResult) => void
+  onSaveResult?: (item: SearchResult) => void
 }
 
-export function ResultGrid({ results, isLoading, isLoadingMore, revealKey, onFindMore, onFindSimilarResult }: ResultGridProps) {
+export function ResultGrid({ results, isLoading, isLoadingMore, revealKey, saveStates = {}, onFindMore, onFindSimilarResult, onSaveResult }: ResultGridProps) {
   return (
     <section className="panel result-panel" aria-labelledby="result-title">
       <div className="panel-heading"><p className="eyebrow">Step 2</p><h2 id="result-title">검색 결과</h2></div>
@@ -19,7 +21,17 @@ export function ResultGrid({ results, isLoading, isLoadingMore, revealKey, onFin
           <img src={item.imageUrl} alt={item.title} />
           <div className="result-card-body"><h3>{item.title}</h3><p className="mall-name">{item.metadata.category}</p><p className="price-text">{item.metadata.colors.join(', ') || '색상 정보 없음'}</p><p className="score-text">유사도 {(item.similarityScore * 100).toFixed(1)}%</p>
           {item.sourceUrl ? <a href={item.sourceUrl} target="_blank" rel="noreferrer">원본 보기</a> : <span className="disabled-link">로컬 카탈로그</span>}
-          <button className="save-result-button" type="button" onClick={() => onFindSimilarResult(item)}>이 이미지와 비슷한 결과</button></div>
+          <div className="result-card-actions">
+            <button className="save-result-button" type="button" onClick={() => onFindSimilarResult(item)}>비슷한 결과</button>
+            {onSaveResult && <button
+              className="save-result-button"
+              type="button"
+              disabled={saveStates[item.catalogItemId] === 'saving' || saveStates[item.catalogItemId] === 'saved'}
+              onClick={() => onSaveResult(item)}
+            >
+              {saveStates[item.catalogItemId] === 'saving' ? '저장 중...' : saveStates[item.catalogItemId] === 'saved' ? '저장됨' : saveStates[item.catalogItemId] === 'duplicate' ? '이미 저장됨' : saveStates[item.catalogItemId] === 'error' ? '다시 저장' : '저장'}
+            </button>}
+          </div></div>
         </article>)}</div>
       </div>}
     </section>
