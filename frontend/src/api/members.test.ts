@@ -11,6 +11,25 @@ describe('member session API', () => {
     vi.resetModules()
     vi.restoreAllMocks()
   })
+  it('restores a member using the HttpOnly refresh cookie', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ accessToken: 'restored-access', tokenType: 'Bearer', expiresIn: 900 }))
+      .mockResolvedValueOnce(jsonResponse({ id: 1, email: 'member@example.com', displayName: '회원', role: 'USER' }))
+    vi.stubGlobal('fetch', fetchMock)
+    const { restoreSession, session } = await import('./members')
+
+    const member = await restoreSession()
+
+    expect(member?.email).toBe('member@example.com')
+    expect(session.token).toBe('restored-access')
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/api/members/token/refresh',
+      expect.objectContaining({ method: 'POST', credentials: 'include' }),
+    )
+    expect(fetchMock.mock.calls[1][1].headers.get('Authorization')).toBe('Bearer restored-access')
+  })
+
   it('clears memory after refresh failure without writing browser storage', async () => {
     const storageSpy = vi.spyOn(Storage.prototype, 'setItem')
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
