@@ -30,6 +30,32 @@ describe('member session API', () => {
     expect(fetchMock.mock.calls[1][1].headers.get('Authorization')).toBe('Bearer restored-access')
   })
 
+  it('refreshes a 401 response and retries once', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/login')) {
+        return jsonResponse({ accessToken: 'old-access', tokenType: 'Bearer', expiresIn: 1 })
+      }
+      if (url.endsWith('/me')) {
+        return jsonResponse({ id: 1, email: 'member@example.com', displayName: '회원', role: 'USER' })
+      }
+      if (url.endsWith('/token/refresh')) {
+        return jsonResponse({ accessToken: 'new-access', tokenType: 'Bearer', expiresIn: 900 })
+      }
+      const authorization = new Headers(init?.headers).get('Authorization')
+      return authorization === 'Bearer new-access'
+        ? jsonResponse({ ok: true })
+        : jsonResponse({ error: { code: 'ACCESS_TOKEN_EXPIRED' } }, 401)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { authorizedFetch, login } = await import('./members')
+    await login('member@example.com', 'password123')
+
+    const response = await authorizedFetch('/protected')
+
+    expect(response.ok).toBe(true)
+  })
+
   it('clears memory after refresh failure without writing browser storage', async () => {
     const storageSpy = vi.spyOn(Storage.prototype, 'setItem')
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
