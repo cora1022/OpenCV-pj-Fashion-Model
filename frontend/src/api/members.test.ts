@@ -30,7 +30,8 @@ describe('member session API', () => {
     expect(fetchMock.mock.calls[1][1].headers.get('Authorization')).toBe('Bearer restored-access')
   })
 
-  it('refreshes a 401 response and retries once', async () => {
+  it('uses one refresh request for concurrent 401 responses and retries once', async () => {
+    let refreshCalls = 0
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
       if (url.endsWith('/login')) {
@@ -40,6 +41,8 @@ describe('member session API', () => {
         return jsonResponse({ id: 1, email: 'member@example.com', displayName: '회원', role: 'USER' })
       }
       if (url.endsWith('/token/refresh')) {
+        refreshCalls += 1
+        await Promise.resolve()
         return jsonResponse({ accessToken: 'new-access', tokenType: 'Bearer', expiresIn: 900 })
       }
       const authorization = new Headers(init?.headers).get('Authorization')
@@ -51,9 +54,13 @@ describe('member session API', () => {
     const { authorizedFetch, login } = await import('./members')
     await login('member@example.com', 'password123')
 
-    const response = await authorizedFetch('/protected')
+    const responses = await Promise.all([
+      authorizedFetch('/protected/one'),
+      authorizedFetch('/protected/two'),
+    ])
 
-    expect(response.ok).toBe(true)
+    expect(responses.every((response) => response.ok)).toBe(true)
+    expect(refreshCalls).toBe(1)
   })
 
   it('clears memory after refresh failure without writing browser storage', async () => {
