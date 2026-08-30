@@ -11,6 +11,7 @@ describe('member session API', () => {
     vi.resetModules()
     vi.restoreAllMocks()
   })
+
   it('restores a member using the HttpOnly refresh cookie', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse({ accessToken: 'restored-access', tokenType: 'Bearer', expiresIn: 900 }))
@@ -73,5 +74,31 @@ describe('member session API', () => {
     expect(await restoreSession()).toBeNull()
     expect(session.token).toBeNull()
     expect(storageSpy).not.toHaveBeenCalled()
+  })
+
+  it('notifies the app when a protected request cannot refresh', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/login')) {
+        return jsonResponse({ accessToken: 'expired-access', tokenType: 'Bearer', expiresIn: 1 })
+      }
+      if (url.endsWith('/me')) {
+        return jsonResponse({ id: 1, email: 'member@example.com', displayName: '회원', role: 'USER' })
+      }
+      return url.endsWith('/token/refresh')
+        ? jsonResponse({ error: { code: 'REFRESH_TOKEN_EXPIRED' } }, 401)
+        : jsonResponse({ error: { code: 'ACCESS_TOKEN_EXPIRED' } }, 401)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { authorizedFetch, login, session } = await import('./members')
+    const listener = vi.fn()
+    session.subscribe(listener)
+    await login('member@example.com', 'password123')
+
+    const response = await authorizedFetch('/protected')
+
+    expect(response.status).toBe(401)
+    expect(session.token).toBeNull()
+    expect(listener).toHaveBeenCalledWith('expired')
   })
 })
