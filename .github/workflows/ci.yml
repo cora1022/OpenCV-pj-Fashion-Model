@@ -27,6 +27,23 @@ jobs:
       - run: uv run ruff check backend
       - run: uv run pytest backend/tests -q
 
+  member-service:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+          cache-dependency-path: member-service/*.gradle.kts
+      - name: Test member service and validate Flyway migrations
+        working-directory: member-service
+        run: ./gradlew spotlessCheck test
+      - name: Build Spring Boot application
+        working-directory: member-service
+        run: ./gradlew bootJar
+
   container-and-policy:
     runs-on: ubuntu-latest
     steps:
@@ -34,6 +51,7 @@ jobs:
       - run: docker compose --env-file .env.example config
       - run: docker build -f frontend/Dockerfile .
       - run: docker build -f backend/Dockerfile .
+      - run: docker build -f member-service/Dockerfile .
       - run: test ! -f .env
       - name: Ensure secrets and local data are not tracked
         run: |
