@@ -19,7 +19,7 @@ Search results contain `catalogItemId`, `title`, `imageUrl`, `sourceUrl`,
 Errors use `{ "error": { "code", "message", "requestId" } }`. Codes are:
 `INVALID_IMAGE`, `UNSUPPORTED_IMAGE_TYPE`, `IMAGE_TOO_LARGE`,
 `IMAGE_DIMENSIONS_EXCEEDED`, `CATALOG_NOT_READY`, `CATALOG_ITEM_NOT_FOUND`,
-`SEARCH_BUSY`, `SEARCH_UNAVAILABLE`, `AUTHENTICATION_REQUIRED`,
+`SEARCH_BUSY`, `SEARCH_TIMEOUT`, `SEARCH_UNAVAILABLE`, `AUTHENTICATION_REQUIRED`,
 `ACCESS_TOKEN_EXPIRED`, `ACCESS_TOKEN_INVALID`, and `INTERNAL_ERROR`.
 
 ## Member API baseline
@@ -29,16 +29,18 @@ Member JSON fields also use camelCase and are routed to Spring Boot.
 | Endpoint | Authentication | Current purpose |
 |---|---|---|
 | `POST /api/members/signup` | Public | Create a member with a BCrypt password hash |
-| `POST /api/members/login` | Public | Return access and refresh tokens |
-| `POST /api/members/token/refresh` | Public token endpoint | Rotate a refresh token |
-| `POST /api/members/logout` | Bearer access token | Revoke the supplied refresh token |
+| `POST /api/members/login` | Public | Return an access token and set the refresh cookie |
+| `POST /api/members/token/refresh` | HttpOnly cookie | Rotate the refresh cookie and return a new access token |
+| `POST /api/members/logout` | Bearer + HttpOnly cookie | Revoke the refresh token and clear its cookie |
 | `GET /api/members/me` | Bearer access token | Return the current member |
-| `GET/POST/DELETE /api/members/search-histories` | Bearer access token | Activity API baseline |
-| `GET/POST/DELETE /api/members/saved-results` | Bearer access token | Saved-result API baseline |
+| `GET/POST/DELETE /api/members/search-histories` | Bearer access token | Paginated owned search histories |
+| `GET/POST/DELETE /api/members/saved-results` | Bearer access token | Paginated owned saved-result snapshots |
 
-The current token response includes both tokens in JSON. Access tokens are RS256 JWTs with issuer,
-audience, subject, role, type, issued-at and expiry claims. Spring Boot owns the private key and
-FastAPI verifies protected search routes with the public key. Both services return the common JSON
-error envelope for authentication failures.
+Token JSON contains `accessToken`, `tokenType`, and `expiresIn`; it never contains the refresh token.
+The refresh token uses an environment-configured HttpOnly, Secure, SameSite, Path and Max-Age cookie.
+Access tokens are RS256 JWTs with issuer, audience, subject, role, type, issued-at and expiry claims.
+Spring Boot owns the private key and FastAPI verifies protected search routes with the public key.
 
-HttpOnly refresh cookies, browser session restoration and final activity DTOs remain planned work.
+Activity list responses use `{ items, page, size, totalElements, totalPages }`. Saved results include
+`catalogItemId`, title and URLs, `similarityScore`, structured metadata, `modelVersion`, and
+`createdAt`. Ownership is taken only from the authenticated principal.

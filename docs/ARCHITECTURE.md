@@ -17,8 +17,8 @@ The applications do not share a database.
 
 | Component | Current responsibility | Storage |
 |---|---|---|
-| React | Landing, signup/login UI, authenticated upload, crop and search flow | Access token in memory only |
-| Spring Boot | Members, Spring Security, RS256 token issuer, activity API baseline | MySQL and private signing key volume |
+| React | Landing, auth session, upload/crop/search, history, saved results and My Page | Access token in memory only |
+| Spring Boot | Members, RS256 token issuer, refresh sessions and user-owned activity | MySQL and private signing key volume |
 | FastAPI | Access-token verification, image validation, crop, embedding and vector search | Qdrant, local catalog and public verification key volume |
 | Catalog indexer | Manifest validation and idempotent vector indexing | Local files → Qdrant |
 | Caddy | Same-origin routing and request-size boundary | None |
@@ -32,19 +32,22 @@ FastAPI `/health/live` checks process liveness. `/health/ready` additionally req
 loaded local manifest, Qdrant connectivity, a non-empty compatible collection and the expected
 model version.
 
-The member service currently exposes live/ready endpoints, but its readiness check does not yet
-verify MySQL. Caddy's public `/health/*` route currently targets FastAPI.
+The member service `/health/live` has no dependency checks. Its `/health/ready` executes a MySQL
+query and verifies that Flyway has a current migration with no pending versions. Caddy's public
+`/health/*` route targets FastAPI; member health is used inside the service network and tests.
 
 ## Authentication status
 
 Signup, login, member lookup and token persistence exist in Spring Boot. Spring signs access tokens
 with RS256; FastAPI verifies the signature, issuer, audience, expiry and access-token type before
 search, crop or catalog re-search. The private key is mounted only into the member service, while
-FastAPI receives the public key. HttpOnly refresh cookies and browser session restoration remain the
-next security baseline.
+FastAPI receives the public key. Refresh tokens are hashed in MySQL and delivered only as rotating
+HttpOnly cookies. React restores a session through refresh and `/me`, keeps the access token in
+memory, and coalesces concurrent 401 responses into one refresh request.
 
 ## User activity status
 
-MySQL tables and initial Spring endpoints exist for search history and saved results. Their final
-DTOs, ownership queries, JSON metadata handling, React integration and automated tests remain to be
-implemented. Spring Boot does not read Qdrant; it stores only user-owned activity snapshots.
+Search histories and saved-result snapshots use concrete DTOs and paginated user-ID repository
+queries. JSON metadata is serialized with Jackson. Cross-user reads and deletes are hidden as 404,
+and duplicate saves return 409. Spring Boot does not read Qdrant; React sends a result snapshot after
+FastAPI search succeeds.
