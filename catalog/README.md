@@ -4,6 +4,10 @@ Only images that you own or may redistribute belong in `catalog/images`. Copy
 `manifest.example.json` to the ignored `manifest.json`, add an item for every local
 image, and record its owner and license in `rights`.
 
+The example manifest pins FashionCLIP to commit
+`7e3ba62ce16b379a1ab479346b66f192e76f51b7`. Keep the manifest revision and
+`FASHIONCLIP_MODEL_REVISION` identical when producing new vectors.
+
 The indexer never downloads `sourceUrl`; it is metadata only. `imagePath` is always
 resolved below `catalog/images`, so absolute paths and `..` are rejected.
 
@@ -24,6 +28,10 @@ repository.
 The migration tool does not call the Naver API or download product images. It copies
 only crop files already present on the local machine and reuses their existing
 FashionCLIP vectors from the legacy Qdrant collection.
+
+The exact FashionCLIP revision of those historical vectors is unknown. New output from the legacy
+importer is labeled `legacy-unverified`; it must not be renamed to the current pinned revision unless
+the images are re-embedded by that exact model commit.
 
 ```powershell
 uv run python -m backend.app.catalog.import_legacy_naver prepare `
