@@ -12,11 +12,14 @@ Style Finder의 React 사용자 인터페이스입니다.
 - 자동 영역 제안과 수동 크롭
 - FastAPI 이미지 검색과 카탈로그 ID 재검색
 - 유사도, 카테고리, 태그, 원본 링크 결과 표시
+- HttpOnly Refresh 쿠키 기반 새로고침 세션 복원과 단일 자동 갱신
+- 검색 기록, 저장 결과, 삭제, 저장 이미지 재검색과 마이페이지
 
 회원 API는 `src/api/members.ts`, 검색 API는 `src/api/search.ts`로 분리되어 있습니다.
-Access Token은 현재 메모리에만 저장하고 검색과 크롭 요청의 Bearer 헤더로 전달합니다.
-Refresh Token 쿠키, 새로고침 세션 복원, 검색 기록, 저장 목록과 마이페이지는 아직
-연결되지 않았습니다.
+Access Token은 메모리에만 저장하고 보호된 요청의 Bearer 헤더로 전달합니다. Refresh
+Token은 JavaScript에서 읽지 않으며, Spring Boot가 설정한 HttpOnly 쿠키로 회전합니다.
+동시에 여러 요청이 401을 받아도 하나의 Refresh 요청만 실행하고 원 요청을 한 번만
+재시도합니다.
 
 ## 실행
 
