@@ -21,15 +21,17 @@
 - Added RS256 access tokens with private/public key separation between Spring Boot and FastAPI.
 - Enforced access tokens on image search, crop and catalog-ID re-search APIs.
 - Added safe JSON 401/403 responses and member-service integration tests.
+- Moved refresh tokens to rotating HttpOnly cookies and added browser session restoration.
+- Completed paginated activity DTOs, user-ID ownership queries, JSON metadata and React My Page.
+- Added member MySQL/Flyway readiness, inference execution timeout and refresh-token cleanup.
+- Added Java 21 member-service CI and MySQL Testcontainers migration verification.
+- Pinned new public catalog vectors to a FashionCLIP commit hash.
 
 ## Required before portfolio release
 
-1. Move refresh tokens to HttpOnly cookies and restore sessions after reload.
-2. Complete activity DTOs, ownership queries, JSON metadata and React My Page.
-3. Add a member-service job to GitHub Actions.
-4. Make member readiness depend on MySQL and apply a real search execution timeout.
-5. Pin a verifiable model revision for new public catalog vectors.
-6. Add a small rights-cleared public demo catalog and measured performance results.
-7. Update screenshots and architecture evidence after the security baseline is complete.
+1. Add a small rights-cleared public demo catalog and measured performance results.
+2. Update deployment screenshots after the rights-cleared catalog is available.
+3. Add production observability and independent deployment only if the portfolio is operated beyond
+   the current single-Compose scope.
 
 The ignored legacy Naver catalog is for local verification only and is not a release artifact.
