@@ -5,8 +5,9 @@
 벡터 검색에 Spring Boot 회원 서비스와 MySQL을 결합하고 있습니다.
 
 현재 React, FastAPI, Spring Boot, Qdrant, MySQL, Caddy가 하나의 Docker Compose
-스택으로 실행됩니다. 서비스 경계와 검색 API 인증 기준선은 구현되어 있지만 사용자 활동
-기능의 통합이 진행 중이므로 완성된 마이크로서비스라고 표현하지 않습니다.
+스택으로 실행됩니다. 서비스 경계, 서버 측 인증, 사용자별 활동 기능은 구현되어 있습니다.
+다만 단일 Compose에 배포하는 포트폴리오 기준선이며, 독립 배포와 운영 체계를 갖춘 완성형
+마이크로서비스라고 과장하지 않습니다.
 
 ## 현재 구현
 
@@ -16,6 +17,8 @@
 - 로그인 후 이미지 업로드, 자동 및 수동 크롭, 유사 이미지 검색
 - JPEG/PNG 사전 검증: 최대 10MiB, 최대 1,600만 픽셀
 - 카탈로그 ID 기반 재검색과 유사도 결과 표시
+- 새로고침 세션 복원과 Access Token 자동 갱신
+- 검색 기록, 결과 저장, 삭제, 저장 이미지 재검색, 마이페이지
 
 ### 이미지 검색 서비스
 
@@ -24,6 +27,7 @@
 - FashionCLIP 512차원 임베딩과 Qdrant 코사인 유사도 검색
 - 임의 URL 다운로드 API 제거와 로컬 manifest 기반 이미지 제공
 - 추론 thread offload, 동시 실행 제한, liveness/readiness
+- 대기열 timeout과 실제 실행 timeout 분리
 - 권리 메타데이터 기반 카탈로그 인덱서와 로컬 legacy 마이그레이션 도구
 - Spring Boot가 발급한 RS256 Access Token을 이용한 검색과 크롭 API 보호
 
@@ -35,21 +39,22 @@
 - Access/Refresh Token 발급과 Refresh Token 해시 저장, 회전, 폐기
 - RSA 비대칭키 서명, issuer, audience, 만료, token type 검증
 - 일관된 Spring Security 401/403 오류 응답
-- MySQL과 Flyway V1/V2 migration
-- 검색 기록과 저장 결과용 JPA 엔티티와 API 기준선
-- H2 기반 회원 및 인증 통합 테스트
+- HttpOnly Refresh 쿠키, 회전, 폐기, 로그아웃, 만료 데이터 정리
+- MySQL과 Flyway V1/V2/V3 migration
+- 페이지네이션과 소유권 조건을 적용한 검색 기록 및 저장 결과 API
+- JSON metadata 직렬화와 사용자별 접근 차단
+- H2 통합 테스트와 MySQL Testcontainers migration 테스트
+- MySQL·Flyway 기반 readiness
 
 ## 아직 완료되지 않은 기능
 
-- HttpOnly 쿠키 기반 Refresh Token과 React 세션 복원
-- 검색 기록, 저장 목록, 마이페이지 React 연결
-- 회원 서비스 DB readiness와 실제 검색 실행 timeout
-- GitHub Actions의 member-service 검증 작업
 - 공개 배포 가능한 권리 확보 카탈로그
+- 권리 확보 카탈로그 기준의 검색 성능 측정과 최신 화면 자료
 
 React는 검색과 크롭 요청에 Access Token을 전달하고, FastAPI는 Spring Boot와 공개키를
-공유해 서명과 표준 claim을 검증합니다. Refresh Token은 아직 JSON 응답으로 전달되므로
-브라우저 세션 복원 전까지는 보안 기준선이 완성된 상태가 아닙니다.
+공유해 서명과 표준 claim을 검증합니다. Refresh Token 원문은 JSON에 포함하지 않고
+HttpOnly 쿠키로만 전달합니다. 자세한 흐름은 [인증 문서](docs/AUTHENTICATION.md)를
+참고하세요.
 
 ## 아키텍처
 
@@ -103,7 +108,9 @@ cd ../member-service
 ./gradlew bootJar
 ```
 
-현재 FastAPI 테스트 20개, React 테스트 3개, Spring Boot 통합 테스트 5개가 있습니다.
+현재 FastAPI 테스트 21개, React 테스트 11개, Spring Boot H2와 단위 테스트 18개가
+실행됩니다. Docker 사용 가능 환경에서는 MySQL 8.4 Testcontainers migration 테스트
+1개가 추가로 실행됩니다.
 
 ## 데이터 정책
 
@@ -117,8 +124,10 @@ cd ../member-service
 
 - HOG fallback은 의류 탐지가 아니라 사람 상반신 추정입니다.
 - YOLO가 의류 클래스를 감지하지 못하면 원본 이미지를 유지합니다.
-- legacy 벡터의 정확한 FashionCLIP commit revision은 확인되지 않았습니다.
+- 새 공개 카탈로그는 FashionCLIP commit `7e3ba62ce16b379a1ab479346b66f192e76f51b7`로 고정합니다.
+- legacy 네이버 벡터의 정확한 FashionCLIP commit revision은 확인되지 않았습니다.
 - 일반 CI에서는 실제 모델 다운로드와 Qdrant 통합 검색을 수행하지 않습니다.
+- 공개 운영 전 로그인, 회원가입, 토큰 갱신에는 공유 저장소 기반 edge rate limit이 필요합니다.
 - cold start와 warm search 성능 측정은 권리 확보 카탈로그 준비 후 공개할 예정입니다.
 
 ## Repository
